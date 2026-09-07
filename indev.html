@@ -1,0 +1,500 @@
+    
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>18vt</title>
+    <link rel="icon" href="https://i.ibb.co/9HVFww1f/geminix-logo.png" type="image/png">
+   
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&family=PT+Sans:wght@400;700&display=swap" rel="stylesheet">
+
+    <!-- Custom Styles -->
+    <style>
+        body {
+            background-image: url('https://huggingface.co/deepsite/background_noisy.webp');
+            font-family: 'Inter', 'PT Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        }
+        .light-sweep {
+            position: relative;
+            overflow: hidden;
+        }
+        .light-sweep::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -150%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transform: skewX(-25deg);
+            transition: left 0.75s;
+        }
+        .light-sweep:hover::before {
+            left: 150%;
+        }
+        .hoverable-btn:hover {
+            background-color: #373737 !important;
+        }
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+        .skeleton-loader {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            right: 1rem;
+            bottom: 1rem;
+            display: none; 
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .skeleton-line {
+            height: 14px;
+            background: linear-gradient(90deg, #3a3a3a 25%, #4a4a4a 50%, #3a3a3a 75%);
+            background-size: 200% 100%;
+            animation: skeleton-shimmer 1.5s infinite linear;
+            border-radius: 4px;
+        }
+        @keyframes skeleton-shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        #settings-modal-container {
+            position: absolute;
+            bottom: calc(100% + 10px); 
+            left: 0;
+            z-index: 50;
+        }
+    </style>
+</head>
+<body class="bg-black text-neutral-200 antialiased">
+    
+<div class="min-h-screen flex flex-col items-center justify-center p-4">
+    
+    <header class="absolute top-0 left-0 p-6 md:p-8">
+        <div class="flex items-center gap-3">
+            <img src="https://i.ibb.co/9HVFww1f/geminix-logo.png" alt="Logo" class="w-8 h-8">
+            <span class="text-xl font-bold">18vt</span>
+            <button id="watch-button" class="ml-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-neutral-300 transition hover:border-zinc-500">Watch</button>
+            <button id="account-button" class="ml-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-neutral-300 transition hover:border-zinc-500">Sign up</button>
+        </div>
+    </header>
+
+    <main class="w-full max-w-4xl flex flex-col items-center text-center">
+        
+        <div class="mb-6">
+            <a href="#" class="inline-flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-full px-3 py-1 text-sm text-neutral-300 hover:border-zinc-500 transition-colors duration-300">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-dices size-3.5 text-sky-500 relative z-10" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><path d="M16 8h.01"></path><path d="M8 8h.01"></path><path d="M16 16h.01"></path><path d="M8 16h.01"></path><path d="M12 12h.01"></path></svg>
+                18vt is out!
+            </a>
+        </div>
+
+        <h1 class="text-5xl md:text-7xl font-black tracking-tight bg-gradient-to-b from-white to-gray-400 text-transparent bg-clip-text leading-tight">
+            Welcome to 18vt
+        </h1>
+
+        <p class="mt-6 text-base text-neutral-400 max-w-2xl">
+            Think, create, and get things done with AI.
+        </p>
+        <p class="text-base text-neutral-400 max-w-2xl">
+            Bring any question, idea, or task and switch between capable AI models in one simple workspace.
+        </p>
+
+        <div id="conversation-log" class="hidden w-full max-w-2xl mx-auto mt-8 space-y-4 text-left"></div>
+
+        <div id="input-container" class="p-3 w-full max-w-xl mx-auto mt-12">
+            <div style="background-color: #262626;" class="relative border border-neutral-700 rounded-2xl ring-[4px] focus-within:ring-neutral-500/30 focus-within:border-neutral-600 ring-transparent z-20 w-full group">
+                <div class="w-full relative flex items-start justify-between pr-4 pt-4">
+                    <textarea id="prompt-textarea" class="w-full bg-transparent text-sm outline-none text-white placeholder:text-neutral-400 px-4 pb-4 resize-none" style="min-height: 80px; max-height: 256px; overflow-y: auto;" placeholder="Ask 18vt anything..."></textarea>
+                    
+                    <div id="skeleton-loader" class="skeleton-loader">
+                        <div class="skeleton-line w-11/12"></div>
+                        <div class="skeleton-line w-5/6"></div>
+                        <div class="skeleton-line w-3/4"></div>
+                    </div>
+
+                    <button id="dice-button" style="border-color: #3e3e3e; background-color: #333333;" data-slot="button" class="hoverable-btn inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap rounded-full text-sm font-sans font-medium transition-all disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border shadow-xs size-7 !rounded-md">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-dice6 lucide-dice-6 size-4" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><path d="M16 8h.01"></path><path d="M16 12h.01"></path><path d="M16 16h.01"></path><path d="M8 8h.01"></path><path d="M8 12h.01"></path><path d="M8 16h.01"></path></svg>
+                    </button>
+                </div>
+                <div class="flex items-center justify-between gap-2 px-4 pb-3 mt-2 relative">
+                    
+                    <div id="settings-modal-container" class="hidden">
+                        <div data-side="top" data-align="center" data-state="open" role="dialog" id="settings-modal" data-slot="popover-content" class="text-popover-foreground z-50 w-72 rounded-md border shadow-md outline-hidden !rounded-2xl p-0 !w-96 overflow-hidden !bg-neutral-900 border-neutral-800" tabindex="-1">
+                            <header class="flex items-center justify-center text-sm px-4 py-3 border-b gap-2 bg-neutral-950 border-neutral-800 font-semibold text-neutral-200">
+                                Customize Settings
+                            </header>
+                            <main class="px-4 pt-5 pb-6 space-y-5">
+                                <div class="flex flex-col gap-2" id="model-list">
+                                    <button class="model-option text-left p-2 hover:bg-neutral-800 rounded-md" data-model="meta-llama/llama-3.3-70b-instruct:free" data-name="Llama 3.3 70B (Free)">Llama 3.3 70B (Free)</button>
+                                    <button class="model-option text-left p-2 hover:bg-neutral-800 rounded-md" data-model="google/gemini-2.0-flash-exp:free" data-name="Gemini 2.0 Flash (Free)">Gemini 2.0 Flash (Free)</button>
+                                    <button class="model-option text-left p-2 hover:bg-neutral-800 rounded-md" data-model="deepseek/deepseek-chat-v3-0324:free" data-name="DeepSeek V3 (Free)">DeepSeek V3 (Free)</button>
+                                    <button class="model-option text-left p-2 hover:bg-neutral-800 rounded-md" data-model="qwen/qwen3-30b-a3b:free" data-name="Qwen 3 30B (Free)">Qwen 3 30B (Free)</button>
+                                </div>
+                            </main>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 flex items-center justify-start gap-1.5 flex-wrap">
+                        <button id="file-button" type="button" style="border-color: #3e3e3e; background-color: #333333;" class="hoverable-btn inline-flex items-center cursor-pointer justify-center gap-1 whitespace-nowrap rounded-md border px-2 h-6 text-xs font-medium transition-all" title="Attach a file">⌕ File</button>
+                        <button id="enhance-btn" data-slot="button" class="inline-flex items-center cursor-pointer justify-center whitespace-nowrap font-sans font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-6 text-xs rounded-full pl-2 pr-2 gap-1 !rounded-md !border-white/10 !bg-gradient-to-r from-sky-400/15 to-purple-400/15 light-sweep hover:brightness-110">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wand-sparkles size-3.5 text-sky-500 relative z-10" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"></path><path d="m14 7 3 3"></path><path d="M5 6v4"></path><path d="M19 14v4"></path><path d="M10 2v2"></path><path d="M7 8H3"></path><path d="M21 16h-4"></path><path d="M11 3H9"></path></svg>
+                            <span class="text-transparent bg-gradient-to-r from-sky-400 to-purple-400 bg-clip-text relative z-10">Enhance</span>
+                        </button>
+                        <button id="scan-image-btn" type="button" style="border-color: #3e3e3e; background-color: #333333;" class="hoverable-btn inline-flex items-center cursor-pointer justify-center gap-1 whitespace-nowrap rounded-md border px-2 h-6 text-xs font-medium transition-all" title="Scan an image with AI">◫ Scan</button>
+                        <button id="image-gen-btn" type="button" style="border-color: #3e3e3e; background-color: #333333;" class="hoverable-btn inline-flex items-center cursor-pointer justify-center gap-1 whitespace-nowrap rounded-md border px-2 h-6 text-xs font-medium transition-all" title="Generate an image">✦ Image</button>
+                        <button id="coding-mode-btn" type="button" style="border-color: #3e3e3e; background-color: #333333;" class="hoverable-btn inline-flex items-center cursor-pointer justify-center gap-1 whitespace-nowrap rounded-md border px-2 h-6 text-xs font-medium transition-all" title="Toggle coding mode">&lt;/&gt; Code</button>
+                        <button id="model-btn" style="border-color: #3e3e3e; background-color: #333333;" data-slot="popover-trigger" class="hoverable-btn inline-flex items-center cursor-pointer justify-center whitespace-nowrap font-sans font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border shadow-xs h-6 text-xs rounded-full pl-2 pr-2 gap-1 !rounded-md" type="button">
+                            <img src="https://i.ibb.co/LXjL6gRZ/image-removebg-preview.png" alt="Model Icon" class="w-3.5 h-3.5 rounded-full"/>
+                            <span id="model-name" class="truncate max-w-[120px]">Llama 3.3 70B (Free)</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-3.5" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                        </button>
+                    </div>
+                    <div class="flex items-center justify-end gap-2">
+                        <span id="file-status" class="hidden max-w-[150px] truncate text-[10px] text-neutral-400"></span>
+                        <button id="submit-btn" style="border-color: #3e3e3e; background-color: #333333;" data-slot="button" class="hoverable-btn inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap rounded-full text-sm font-sans font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border shadow-xs size-7 !rounded-md">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-up" viewBox="0 0 16 16">
+                                <path fill-rule="evenodd" d="M8 15a.5.5 0 0 0 .5-.5V2.707l3.146 3.147a.5.5 0 0 0 .708-.708l-4-4a.5.5 0 0 0-.708 0l-4 4a.5.5 0 1 0 .708.708L7.5 2.707V14.5a.5.5 0 0 0 .5.5z"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div id="auth-modal" class="hidden fixed inset-0 z-[60] items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <div class="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900 p-6 text-left shadow-2xl">
+        <div class="flex items-center justify-between"><h2 id="auth-title" class="text-lg font-semibold text-white">Create your account</h2><button id="close-auth" class="text-xl text-neutral-500 hover:text-white">×</button></div>
+        <p id="auth-description" class="mt-2 text-sm text-neutral-400">Create a secure account to sync your conversations across devices.</p>
+        <div class="mt-5 grid grid-cols-2 rounded-lg border border-neutral-800 bg-neutral-950 p-1 text-xs"><button id="signup-tab" type="button" class="rounded-md bg-neutral-800 px-3 py-2 text-white">Sign up</button><button id="signin-tab" type="button" class="rounded-md px-3 py-2 text-neutral-400 hover:text-white">Sign in</button></div>
+        <form id="auth-form" class="mt-4 space-y-3"><input id="auth-name" required class="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-500" placeholder="Your name" /><input id="auth-email" required type="email" autocomplete="email" class="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-500" placeholder="Email address" /><input id="auth-password" required type="password" minlength="8" autocomplete="new-password" class="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-500" placeholder="Password (8+ characters)" /><p id="auth-error" class="hidden text-xs text-red-300"></p><button id="auth-submit" class="w-full rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-neutral-200" type="submit">Create account</button></form>
+    </div>
+</div>
+
+<input id="image-file-input" type="file" accept="image/*" class="hidden" />
+<input id="attachment-input" type="file" class="hidden" />
+
+<div id="watcher-modal" class="hidden fixed inset-0 z-[70] items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+    <div class="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 text-left shadow-2xl">
+        <div class="flex items-center justify-between border-b border-neutral-800 px-5 py-4"><div><h2 class="text-lg font-semibold text-white">18vt Watch</h2><p class="mt-1 text-xs text-neutral-500">Find films, shows, and anime. Keep your watchlist and progress in one place.</p></div><button id="close-watcher" class="text-xl text-neutral-500 hover:text-white">×</button></div>
+        <div class="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-5 py-3"><button class="watch-tab rounded-lg bg-neutral-800 px-3 py-2 text-xs text-white" data-type="movie">Movies</button><button class="watch-tab rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-white" data-type="tv">TV shows</button><button class="watch-tab rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-white" data-type="anime">Anime</button><button id="watchlist-tab" class="ml-auto rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-white">My watchlist</button></div>
+        <div class="flex gap-2 px-5 py-4"><input id="media-search" class="min-w-0 flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-600" placeholder="Search movies, shows, or anime..." /><button id="media-search-button" class="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-neutral-200">Search</button></div>
+        <div id="watcher-error" class="hidden mx-5 mb-2 rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-200"></div>
+        <div id="media-results" class="grid min-h-[260px] flex-1 grid-cols-2 gap-3 overflow-y-auto px-5 pb-5 sm:grid-cols-3 lg:grid-cols-4"></div>
+        <div id="watchlist-results" class="hidden min-h-[260px] flex-1 space-y-2 overflow-y-auto px-5 pb-5"></div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('contextmenu', event => event.preventDefault());
+    document.onkeydown = function (e) {
+        if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) || (e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) || (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0))) {
+            return false;
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const enhanceBtn = document.getElementById('enhance-btn');
+        const diceBtn = document.getElementById('dice-button');
+        const textarea = document.getElementById('prompt-textarea');
+        const skeletonLoader = document.getElementById('skeleton-loader');
+        const inputContainer = document.getElementById('input-container');
+        
+        const modelBtn = document.getElementById('model-btn');
+        const settingsModalContainer = document.getElementById('settings-modal-container');
+        const settingsModal = document.getElementById('settings-modal');
+        const modelList = document.getElementById('model-list');
+        const modelNameSpan = document.getElementById('model-name');
+        const conversationLog = document.getElementById('conversation-log');
+        const accountButton = document.getElementById('account-button');
+        const watchButton = document.getElementById('watch-button');
+        const watcherModal = document.getElementById('watcher-modal');
+        const closeWatcher = document.getElementById('close-watcher');
+        const mediaSearch = document.getElementById('media-search');
+        const mediaSearchButton = document.getElementById('media-search-button');
+        const mediaResults = document.getElementById('media-results');
+        const watchlistResults = document.getElementById('watchlist-results');
+        const watchlistTab = document.getElementById('watchlist-tab');
+        const watcherError = document.getElementById('watcher-error');
+        let mediaType = 'movie';
+        let showingWatchlist = false;
+        const authModal = document.getElementById('auth-modal');
+        const authForm = document.getElementById('auth-form');
+        const authName = document.getElementById('auth-name');
+        const authEmail = document.getElementById('auth-email');
+        const authPassword = document.getElementById('auth-password');
+        const authDescription = document.getElementById('auth-description');
+        const authError = document.getElementById('auth-error');
+        const authSubmit = document.getElementById('auth-submit');
+        const signupTab = document.getElementById('signup-tab');
+        const signinTab = document.getElementById('signin-tab');
+        const scanImageBtn = document.getElementById('scan-image-btn');
+        const imageGenBtn = document.getElementById('image-gen-btn');
+        const codingModeBtn = document.getElementById('coding-mode-btn');
+        const imageFileInput = document.getElementById('image-file-input');
+        const attachmentInput = document.getElementById('attachment-input');
+        const fileButton = document.getElementById('file-button');
+        const fileStatus = document.getElementById('file-status');
+        let codingMode = localStorage.getItem('18vt-coding-mode') === 'true';
+        let attachedFile = null;
+
+        let conversations = [];
+        let currentUser = null;
+        let authMode = 'signup';
+        const saveConversations = () => localStorage.setItem('18vt-conversations-cache', JSON.stringify(conversations));
+        const api = async (url, options = {}) => { const response = await fetch(url, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || data.message || `Request failed (${response.status})`); return data; };
+        const loadAccount = async () => { try { const data = await api('/api/auth/me'); currentUser = data.user; if (currentUser) { accountButton.textContent = currentUser.name; const saved = await api('/api/conversations'); conversations = saved.conversations || []; renderConversations(); } } catch (error) { console.warn('Account check unavailable:', error.message); } };
+        const loadMedia = async () => { if (!currentUser) { setWatcherError('Sign up or sign in to use Watch.'); return; } setWatcherError(''); mediaResults.innerHTML = '<div class="col-span-full flex min-h-[220px] items-center justify-center text-sm text-neutral-500">Loading...</div>'; try { const query = mediaSearch.value.trim() || 'popular'; const data = await api(`/api/media/search?q=${encodeURIComponent(query)}&type=${mediaType}`); renderMediaResults(data.results || []); } catch (error) { setWatcherError(error.message); mediaResults.innerHTML = ''; } };
+        const loadWatchlist = async () => { if (!currentUser) { setWatcherError('Sign up or sign in to use Watch.'); return; } setWatcherError(''); try { const data = await api('/api/watchlist'); renderWatchlist(data.items || []); } catch (error) { setWatcherError(error.message); } };
+        const openWatcher = () => { if (!currentUser) { setAuthMode('signup'); authModal.classList.remove('hidden'); authModal.classList.add('flex'); setWatcherError('Sign up or sign in to use Watch.'); return; } showingWatchlist = false; watcherModal.classList.remove('hidden'); watcherModal.classList.add('flex'); watchlistResults.classList.add('hidden'); mediaResults.classList.remove('hidden'); loadMedia(); };
+        const setAuthMode = (mode) => { authMode = mode; const signup = mode === 'signup'; document.getElementById('auth-title').textContent = signup ? 'Create your account' : 'Welcome back'; authDescription.textContent = signup ? 'Create a secure account to sync your conversations across devices.' : 'Sign in to access your saved conversations.'; authName.classList.toggle('hidden', !signup); authName.required = signup; authSubmit.textContent = signup ? 'Create account' : 'Sign in'; signupTab.className = signup ? 'rounded-md bg-neutral-800 px-3 py-2 text-white' : 'rounded-md px-3 py-2 text-neutral-400 hover:text-white'; signinTab.className = signup ? 'rounded-md px-3 py-2 text-neutral-400 hover:text-white' : 'rounded-md bg-neutral-800 px-3 py-2 text-white'; authPassword.autocomplete = signup ? 'new-password' : 'current-password'; authError.classList.add('hidden'); };
+        const persistConversation = async (conversation) => { if (!currentUser) { alert('Please sign up or sign in before saving conversations.'); return false; } try { const data = await api('/api/conversations', { method: 'POST', body: JSON.stringify(conversation) }); conversations.push(data.conversation); saveConversations(); renderConversations(); return true; } catch (error) { alert(error.message); return false; } };
+        const readAsDataUrl = (file) => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); });
+        const readAsText = (file) => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || '').slice(0, 120000)); reader.onerror = reject; reader.readAsText(file); });
+        const escapeHtml = (value) => String(value).replace(/[&<>\"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#039;' }[character]));
+        const setWatcherError = (message = '') => { watcherError.textContent = message; watcherError.classList.toggle('hidden', !message); };
+        const watchLink = (item) => item.mediaType === 'anime' ? `https://www.crunchyroll.com/search?q=${encodeURIComponent(item.title)}` : `https://www.justwatch.com/us/search?q=${encodeURIComponent(item.title)}`;
+        const renderMediaResults = (results) => {
+            mediaResults.innerHTML = results.length ? results.map((item) => `<article class="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900"><div class="aspect-[2/3] bg-neutral-900">${item.posterUrl ? `<img src="${escapeHtml(item.posterUrl)}" alt="${escapeHtml(item.title)} poster" class="h-full w-full object-cover" loading="lazy" />` : '<div class="flex h-full items-center justify-center px-3 text-center text-xs text-neutral-600">No poster available</div>'}</div><div class="p-3"><h3 class="truncate text-sm font-semibold text-white" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</h3><div class="mt-1 flex items-center justify-between text-[10px] text-neutral-500"><span>${escapeHtml(item.year || 'Release date unknown')}</span><span>${item.score ? `★ ${Number(item.score).toFixed(1)}` : ''}</span></div><p class="mt-2 line-clamp-3 text-[11px] leading-5 text-neutral-400">${escapeHtml(item.overview || 'No synopsis available.')}</p><div class="mt-3 flex gap-2"><button class="watchlist-add flex-1 rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-300 hover:border-neutral-500 hover:text-white" data-item="${encodeURIComponent(JSON.stringify(item))}">＋ Watchlist</button><a href="${watchLink(item)}" target="_blank" rel="noopener noreferrer" class="rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-400 hover:border-neutral-500 hover:text-white" title="Find where to watch">▶</a></div></div></article>`).join('') : '<div class="col-span-full flex min-h-[220px] items-center justify-center text-sm text-neutral-500">No results found. Try another search.</div>';
+        };
+        const renderWatchlist = (items) => { watchlistResults.innerHTML = items.length ? items.map((item) => `<div class="flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900 p-3"><div class="h-16 w-11 shrink-0 overflow-hidden rounded bg-neutral-800">${item.posterUrl ? `<img src="${escapeHtml(item.posterUrl)}" alt="" class="h-full w-full object-cover" />` : ''}</div><div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold text-white">${escapeHtml(item.title)}</div><div class="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">${escapeHtml(item.mediaType)} · ${escapeHtml(item.status)}</div><div class="mt-2 flex items-center gap-2"><input class="watch-progress w-full accent-sky-500" type="range" min="0" max="100" value="${item.progress}" data-id="${item.id}" /><span class="w-8 text-right text-[10px] text-neutral-500">${item.progress}%</span></div><a href="${watchLink(item)}" target="_blank" rel="noopener noreferrer" class="mt-1 inline-block text-[10px] text-sky-400 hover:text-sky-300">Find where to watch ↗</a></div><button class="watchlist-remove px-2 text-lg text-neutral-600 hover:text-red-300" data-id="${item.id}" title="Remove">×</button></div>`).join('') : '<div class="flex min-h-[220px] items-center justify-center text-sm text-neutral-500">Your watchlist is empty.</div>'; };
+        const renderConversations = () => {
+            if (!conversations.length) { conversationLog.classList.add('hidden'); return; }
+            conversationLog.classList.remove('hidden');
+            conversationLog.innerHTML = conversations.map((item) => `<div class="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4"><div class="mb-2 text-xs font-semibold text-sky-400">You${item.fileName ? ` · ${escapeHtml(item.fileName)}` : ''}</div><div class="whitespace-pre-wrap text-sm text-white">${escapeHtml(item.prompt)}</div>${item.imageUrl ? `<img src="${escapeHtml(item.imageUrl)}" alt="Generated image" class="mt-4 max-h-96 w-full rounded-lg object-contain bg-black/30" loading="lazy" />` : ''}<div class="mt-4 mb-2 text-xs font-semibold text-purple-400">${escapeHtml(item.modelName || '18vt AI')}</div><div class="whitespace-pre-wrap text-sm leading-6 text-neutral-300">${escapeHtml(item.reply || '')}</div></div>`).join('');
+        };
+
+        let originalPrompt = '';
+        let enhancedPrompt = '';
+        let isLoading = false;
+        const originalPlaceholder = textarea.placeholder;
+        let selectedModel = localStorage.getItem('18vt-model') || 'meta-llama/llama-3.3-70b-instruct:free';
+        codingModeBtn.classList.toggle('!border-sky-500', codingMode);
+        codingModeBtn.classList.toggle('!text-sky-400', codingMode);
+        codingModeBtn.textContent = codingMode ? '</> Coding on' : '</> Code';
+        const openRouterEndpoint = '/api/chat';
+        // Keep secrets out of this file. The local server reads OPENROUTER_API_KEY from its environment.
+        const getApiEndpoint = () => openRouterEndpoint;
+        const setAttachedFile = (file) => { attachedFile = file; fileStatus.textContent = file ? `📎 ${file.name}` : ''; fileStatus.classList.toggle('hidden', !file); };
+
+        const setLoadingState = (loading) => {
+            isLoading = loading;
+            skeletonLoader.style.display = loading ? 'flex' : 'none';
+            textarea.style.color = loading ? 'transparent' : 'white';
+            textarea.placeholder = loading ? '' : originalPlaceholder;
+            inputContainer.classList.toggle('pointer-events-none', loading);
+            inputContainer.classList.toggle('opacity-60', loading);
+        };
+        
+        const autoResizeTextarea = () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+        };
+
+        const makeApiCall = async (input, systemPrompt = '', model = selectedModel) => {
+            try {
+                const response = await fetch(getApiEndpoint(), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model,
+                        system: systemPrompt,
+                        messages: [{ role: 'user', content: input.image ? [{ type: 'text', text: input.text }, { type: 'image_url', image_url: { url: input.image } }] : input.text }]
+                    })
+                });
+                if (!response.ok) throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                const data = await response.json();
+                return data?.reply || data?.choices?.[0]?.message?.content || '';
+            } catch (error) {
+                console.error('OpenRouter call failed:', error);
+                alert('Could not reach OpenRouter. Start the local server with OPENROUTER_API_KEY configured.');
+                return null;
+            }
+        };
+
+        const scanImage = async (file) => {
+            if (!file || isLoading) return;
+            setLoadingState(true);
+            try {
+                const image = await readAsDataUrl(file);
+                const reply = await makeApiCall({ text: 'Describe and analyze this image. Extract any readable text, explain what is shown, and call out useful details or concerns.', image }, 'You are a careful image analysis assistant. Be accurate, separate visible facts from guesses, and preserve text exactly when possible.', 'google/gemini-2.0-flash-exp:free');
+                if (reply) {
+                    await persistConversation({ prompt: 'Analyze this image', reply, fileName: file.name, modelName: 'Gemini 2.0 Flash (Free)' });
+                }
+            } finally {
+                setLoadingState(false);
+                imageFileInput.value = '';
+            }
+        };
+
+        const generateImage = async () => {
+            const prompt = textarea.value.trim();
+            if (!prompt || isLoading) { if (!prompt) alert('Describe the image you want to create first.'); return; }
+            setLoadingState(true);
+            try {
+                if (!currentUser) { setLoadingState(false); setAuthMode('signup'); authModal.classList.remove('hidden'); authModal.classList.add('flex'); return; }
+                const response = await fetch('/api/generate-image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ prompt }) });
+                if (!response.ok) throw new Error('Image service unavailable');
+                const data = await response.json();
+                await persistConversation({ prompt, reply: 'Generated image', imageUrl: data.imageUrl, modelName: 'Pollinations (Free)' });
+                textarea.value = '';
+            } catch (error) {
+                alert('Image generation needs the local server. Run `node server.js`, then try again.');
+            } finally {
+                setLoadingState(false);
+                autoResizeTextarea();
+            }
+        };
+
+        const submitPrompt = async () => {
+            const prompt = textarea.value.trim();
+            if (!prompt || isLoading) return;
+            setLoadingState(true);
+            const systemPrompt = codingMode ? 'You are an expert software engineer. Give production-quality code, explain important decisions briefly, include complete files when requested, and identify security or setup steps.' : 'You are a helpful, general-purpose AI assistant. Be clear, practical, and friendly.';
+            const payload = attachedFile?.type?.startsWith('image/')
+                ? { text: prompt, image: await readAsDataUrl(attachedFile).catch(() => null) }
+                : { text: attachedFile ? `${prompt}\n\nAttached file: ${attachedFile.name}\n\n${await readAsText(attachedFile).catch(() => '[Unable to read this file in the browser]')}` : prompt };
+            const requestModel = payload.image ? 'google/gemini-2.0-flash-exp:free' : selectedModel;
+            const reply = await makeApiCall(payload, systemPrompt, requestModel);
+            if (reply) {
+                await persistConversation({ prompt, reply, fileName: attachedFile?.name || '', modelName: modelNameSpan.textContent });
+                textarea.value = '';
+                setAttachedFile(null);
+            }
+            setLoadingState(false);
+            autoResizeTextarea();
+        };
+
+        textarea.addEventListener('input', autoResizeTextarea);
+        document.getElementById('submit-btn').addEventListener('click', submitPrompt);
+        textarea.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submitPrompt(); } });
+        watchButton.addEventListener('click', openWatcher);
+        closeWatcher.addEventListener('click', () => watcherModal.classList.add('hidden'));
+        watcherModal.addEventListener('click', (event) => { if (event.target === watcherModal) watcherModal.classList.add('hidden'); });
+        mediaSearchButton.addEventListener('click', loadMedia);
+        mediaSearch.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadMedia(); });
+        document.querySelectorAll('.watch-tab').forEach((tab) => tab.addEventListener('click', () => { mediaType = tab.dataset.type; showingWatchlist = false; document.querySelectorAll('.watch-tab').forEach((item) => item.className = item === tab ? 'watch-tab rounded-lg bg-neutral-800 px-3 py-2 text-xs text-white' : 'watch-tab rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-white'); watchlistResults.classList.add('hidden'); mediaResults.classList.remove('hidden'); loadMedia(); }));
+        watchlistTab.addEventListener('click', () => { showingWatchlist = true; mediaResults.classList.add('hidden'); watchlistResults.classList.remove('hidden'); loadWatchlist(); });
+        mediaResults.addEventListener('click', async (event) => { const button = event.target.closest('.watchlist-add'); if (!button) return; try { const item = JSON.parse(decodeURIComponent(button.dataset.item)); await api('/api/watchlist', { method: 'POST', body: JSON.stringify(item) }); button.textContent = '✓ Added'; button.disabled = true; } catch (error) { setWatcherError(error.message); } });
+        watchlistResults.addEventListener('input', async (event) => { const slider = event.target.closest('.watch-progress'); if (!slider) return; try { await api(`/api/watchlist/${encodeURIComponent(slider.dataset.id)}`, { method: 'PATCH', body: JSON.stringify({ progress: Number(slider.value) }) }); slider.nextElementSibling.textContent = `${slider.value}%`; } catch (error) { setWatcherError(error.message); } });
+        watchlistResults.addEventListener('click', async (event) => { const button = event.target.closest('.watchlist-remove'); if (!button) return; try { await api(`/api/watchlist/${encodeURIComponent(button.dataset.id)}`, { method: 'DELETE' }); loadWatchlist(); } catch (error) { setWatcherError(error.message); } });
+        accountButton.addEventListener('click', async () => { if (currentUser) { if (confirm('Sign out of 18vt?')) { await api('/api/auth/signout', { method: 'POST' }); currentUser = null; conversations = []; accountButton.textContent = 'Sign up'; renderConversations(); } return; } setAuthMode('signup'); authModal.classList.remove('hidden'); authModal.classList.add('flex'); });
+        document.getElementById('close-auth').addEventListener('click', () => authModal.classList.add('hidden'));
+        fileButton.addEventListener('click', () => attachmentInput.click());
+        attachmentInput.addEventListener('change', (event) => { const file = event.target.files[0]; if (file) { setAttachedFile(file); textarea.focus(); } });
+        scanImageBtn.addEventListener('click', () => imageFileInput.click());
+        imageFileInput.addEventListener('change', (event) => scanImage(event.target.files[0]));
+        imageGenBtn.addEventListener('click', generateImage);
+        codingModeBtn.addEventListener('click', () => { codingMode = !codingMode; localStorage.setItem('18vt-coding-mode', codingMode); codingModeBtn.classList.toggle('!border-sky-500', codingMode); codingModeBtn.classList.toggle('!text-sky-400', codingMode); codingModeBtn.textContent = codingMode ? '</> Coding on' : '</> Code'; textarea.placeholder = codingMode ? 'Describe the code, app, or file you need...' : originalPlaceholder; });
+        signupTab.addEventListener('click', () => setAuthMode('signup'));
+        signinTab.addEventListener('click', () => setAuthMode('signin'));
+        authForm.addEventListener('submit', async (event) => { event.preventDefault(); authError.classList.add('hidden'); authSubmit.disabled = true; try { const endpoint = authMode === 'signup' ? '/api/auth/signup' : '/api/auth/signin'; const body = { email: authEmail.value.trim(), password: authPassword.value }; if (authMode === 'signup') body.name = authName.value.trim(); const data = await api(endpoint, { method: 'POST', body: JSON.stringify(body) }); if (data.needsEmailConfirmation) { authError.textContent = data.message || 'Check your email to confirm your account, then sign in.'; authError.classList.remove('hidden'); return; } currentUser = data.user; accountButton.textContent = currentUser.name; const saved = await api('/api/conversations'); conversations = saved.conversations || []; renderConversations(); authModal.classList.add('hidden'); authForm.reset(); setAuthMode('signup'); } catch (error) { authError.textContent = error.message; authError.classList.remove('hidden'); } finally { authSubmit.disabled = false; } });
+        renderConversations();
+        loadAccount();
+
+        diceBtn.addEventListener('click', async () => {
+            if (isLoading) return;
+            
+            textarea.value = '';
+            setLoadingState(true);
+            originalPrompt = '';
+            enhancedPrompt = '';
+
+            const newText = await makeApiCall({ text: 'Generate a random, creative prompt for a general-purpose AI assistant.' },
+                'You are a prompt idea generator. Create a single, actionable, and creative request for a general-purpose AI assistant. Do not add any conversational text, preambles, or markdown formatting like quotes or backticks. Only output the raw prompt text.'
+            );
+            if (newText) {
+                textarea.value = newText.trim();
+            }
+            setLoadingState(false);
+            autoResizeTextarea();
+        });
+
+        enhanceBtn.addEventListener('click', async () => {
+            const currentPrompt = textarea.value.trim();
+            if (!currentPrompt || isLoading) return;
+
+            originalPrompt = currentPrompt;
+            setLoadingState(true);
+
+            const newText = await makeApiCall({ text: 'Enhance this prompt for a general-purpose AI assistant to make it more detailed and effective: ' + currentPrompt },
+                'You are a prompt enhancement expert. Rewrite the user\'s prompt to be more detailed, specific, and clear for a general-purpose AI assistant. Do not add any conversational text, preambles, or markdown formatting. Only output the raw, enhanced prompt text.'
+            );
+            if (newText) {
+                enhancedPrompt = newText.trim();
+                textarea.value = enhancedPrompt;
+            } else {
+                textarea.value = originalPrompt; 
+            }
+            setLoadingState(false);
+            autoResizeTextarea();
+        });
+
+        textarea.addEventListener('keydown', (e) => {
+            if (isLoading) {
+                e.preventDefault();
+                return;
+            }
+            const { selectionStart, value } = e.target;
+            const onFirstLine = value.substring(0, selectionStart).indexOf('\n') === -1;
+            const onLastLine = value.substring(selectionStart).indexOf('\n') === -1;
+
+            if (e.key === 'ArrowUp' && onFirstLine && originalPrompt && value !== originalPrompt) {
+                e.preventDefault();
+                textarea.value = originalPrompt;
+                autoResizeTextarea();
+            } else if (e.key === 'ArrowDown' && onLastLine && enhancedPrompt && value !== enhancedPrompt) {
+                e.preventDefault();
+                textarea.value = enhancedPrompt;
+                autoResizeTextarea();
+            }
+        });
+
+        modelBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            settingsModalContainer.classList.toggle('hidden');
+        });
+        
+        modelList.addEventListener('click', (event) => {
+            const button = event.target.closest('.model-option');
+            if (button) {
+                selectedModel = button.dataset.model;
+                localStorage.setItem('18vt-model', selectedModel);
+                modelNameSpan.textContent = button.dataset.name;
+                settingsModalContainer.classList.add('hidden');
+            }
+        });
+
+        window.addEventListener('click', (event) => {
+            if (!settingsModalContainer.classList.contains('hidden') && !settingsModal.contains(event.target) && !modelBtn.contains(event.target)) {
+                settingsModalContainer.classList.add('hidden');
+            }
+        });
+
+        autoResizeTextarea();
+    });
+</script>
+
+</body>
+</html>
+
+  

@@ -1,0 +1,12 @@
+Before deploying
+Create a Supabase project.
+Run supabase-schema.sql in Supabase SQL Editor.
+Add these Vercel environment variables:
+env
+Copy
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+OPENROUTER_API_KEY=your_new_openrouter_key
+TMDB_API_KEY=your_tmdb_key
+PUBLIC_URL=https://your-app.vercel.app
+Import the project into Vercel and deploy.        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
