@@ -2,8 +2,13 @@
   "version": 2,
   "buildCommand": "",
   "outputDirectory": ".",
+  "functions": {
+    "api/index.js": {
+      "runtime": "nodejs20.x"
+    }
+  },
   "rewrites": [
     { "source": "/", "destination": "/indev.html" },
-    { "source": "/api/:path*", "destination": "/api/:path*" }
+    { "source": "/api/:path*", "destination": "/api" }
   ]
 }
