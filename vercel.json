@@ -1,6 +1,7 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/", "destination": "/indev.html" }
+    { "source": "/", "destination": "/indev.html" },
+    { "source": "/api/:path*", "destination": "/api/:path*" }
   ]
 }
