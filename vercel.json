@@ -2,7 +2,6 @@
   "version": 2,
   "buildCommand": "",
   "outputDirectory": ".",
-  "public": true,
   "rewrites": [
     { "source": "/", "destination": "/indev.html" },
     { "source": "/api/:path*", "destination": "/api/:path*" }
