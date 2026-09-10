@@ -6,6 +6,47 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
+const DEFAULT_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
+const VISION_MODEL = 'google/gemini-2.0-flash-exp:free';
+const FALLBACK_CHAIN = [DEFAULT_MODEL, 'google/gemini-2.0-flash-exp:free', 'deepseek/deepseek-chat-v3-0324:free'];
+const MAX_BODY_BYTES = 12_000_000;
+const UPSTREAM_TIMEOUT_MS = 55_000; // stay under Vercel's function timeout
+
+// Lightweight in-memory rate limiter (per lambda instance; Vercel may spawn
+// several, but this still blunts bursts and costs nothing).
+const RATE_LIMITS = { chat: 20, media: 40, auth: 15, default: 60 };
+const rateBuckets = new Map();
+function rateLimit(scope, key, limit) {
+    const now = Date.now();
+    const windowMs = 60_000;
+    const bucketKey = `${scope}:${key}`;
+    const bucket = rateBuckets.get(bucketKey) || { count: 0, reset: now + windowMs };
+    if (now > bucket.reset) { bucket.count = 0; bucket.reset = now + windowMs; }
+    bucket.count += 1;
+    rateBuckets.set(bucketKey, bucket);
+    if (rateBuckets.size > 5_000) rateBuckets.clear(); // avoid unbounded memory
+    return { ok: bucket.count <= limit, retryAfter: Math.ceil((bucket.reset - now) / 1000) };
+}
+
+function clientKey(req) {
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'anon';
+    return ip;
+}
+
+// Tiny TTL cache for upstream GETs (TMDB/Jikan) to cut latency + rate-limit hits.
+const cache = new Map();
+async function cachedJson(url, options = {}, ttlMs = 5 * 60_000) {
+    const hit = cache.get(url);
+    if (hit && Date.now() < hit.expires) return hit.data;
+    const response = await fetch(url, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS), ...options });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+        cache.set(url, { data, expires: Date.now() + ttlMs });
+        if (cache.size > 500) cache.clear();
+    }
+    return data;
+}
+
 console.log('[18vt startup] Environment check:');
 console.log('  SUPABASE_URL:', SUPABASE_URL ? '✓ configured' : '✗ MISSING');
 console.log('  SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '✓ configured' : '✗ MISSING');
@@ -13,341 +54,388 @@ console.log('  OPENROUTER_API_KEY:', OPENROUTER_API_KEY ? '✓ configured' : '�
 console.log('  TMDB_API_KEY:', TMDB_API_KEY ? '✓ configured' : '✗ MISSING');
 
 const json = (res, status, body, headers = {}) => {
-  res.statusCode = status;
-  Object.entries({ 'content-type': 'application/json; charset=utf-8', ...headers }).forEach(([key, value]) => res.setHeader(key, value));
-  res.end(JSON.stringify(body));
+    res.statusCode = status;
+    Object.entries({ 'content-type': 'application/json; charset=utf-8', ...headers }).forEach(([key, value]) => res.setHeader(key, value));
+    res.end(JSON.stringify(body));
 };
 
 const body = (req) => new Promise((resolve, reject) => {
-  let value = '';
-  req.on('data', (chunk) => { value += chunk; if (value.length > 12_000_000) { reject(new Error('Request body is too large')); req.destroy(); } });
-  req.on('end', () => { try { resolve(JSON.parse(value || '{}')); } catch { reject(new Error('Request body must be valid JSON')); } });
-  req.on('error', reject);
+    let value = '';
+    req.on('data', (chunk) => { value += chunk; if (value.length > MAX_BODY_BYTES) { reject(new Error('Request body is too large')); req.destroy(); } });
+    req.on('end', () => { try { resolve(JSON.parse(value || '{}')); } catch { reject(new Error('Request body must be valid JSON')); } });
+    req.on('error', reject);
 });
 
 const cookies = (req) => Object.fromEntries((req.headers.cookie || '').split(';').filter(Boolean).map((item) => { const [key, ...rest] = item.trim().split('='); return [key, decodeURIComponent(rest.join('='))]; }));
 
 const setAuthCookies = (session) => [
-  `18vt_access=${encodeURIComponent(session.access_token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${COOKIE_MAX_AGE}`,
-  `18vt_refresh=${encodeURIComponent(session.refresh_token || '')}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${COOKIE_MAX_AGE * 2}`
+    `18vt_access=${encodeURIComponent(session.access_token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${COOKIE_MAX_AGE}`,
+    `18vt_refresh=${encodeURIComponent(session.refresh_token || '')}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${COOKIE_MAX_AGE * 2}`
 ];
 
 const clearAuthCookies = () => [
-  '18vt_access=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0',
-  '18vt_refresh=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0'
+    '18vt_access=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0',
+    '18vt_refresh=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0'
 ];
 
 const publicUser = (user) => user && ({ id: user.id, email: user.email, name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Friend', createdAt: user.created_at });
 
 const supabase = async (endpoint, options = {}, accessToken = '') => {
-  console.log(`[Supabase] ${options.method || 'GET'} ${endpoint}`);
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.error('[Supabase] ERROR: Missing SUPABASE_URL or SUPABASE_ANON_KEY');
-    throw new Error('Supabase is not configured. Add SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY to Vercel Environment Variables.');
-  }
-  try {
-    const response = await fetch(`${SUPABASE_URL}${endpoint}`, { 
-      ...options, 
-      headers: { 
-        apikey: SUPABASE_ANON_KEY, 
-        Authorization: `Bearer ${accessToken || SUPABASE_ANON_KEY}`, 
-        'Content-Type': 'application/json', 
-        ...(options.headers || {}) 
-      } 
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        throw new Error('Supabase is not configured. Add SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY to Vercel Environment Variables.');
+    }
+    const response = await fetch(`${SUPABASE_URL}${endpoint}`, {
+        ...options,
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${accessToken || SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            ...(options.headers || {})
+        }
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      console.error(`[Supabase] ${response.status}:`, data);
-      throw new Error(data.msg || data.error_description || data.message || data.error || `Supabase request failed (${response.status})`);
+        throw new Error(data.msg || data.error_description || data.message || data.error || `Supabase request failed (${response.status})`);
     }
-    console.log(`[Supabase] ✓ ${response.status}`);
     return data;
-  } catch (error) {
-    console.error('[Supabase] Fetch error:', error.message);
-    throw error;
-  }
 };
 
 const accessUser = async (req, res) => {
-  const jar = cookies(req);
-  if (!jar['18vt_access']) {
-    console.log('[Auth] No access token in cookies');
-    return null;
-  }
-  try { 
-    return { user: await supabase('/auth/v1/user', { method: 'GET' }, jar['18vt_access']), accessToken: jar['18vt_access'] }; 
-  } catch (error) {
-    console.log('[Auth] Access token invalid, attempting refresh...');
-    if (!jar['18vt_refresh']) {
-      console.log('[Auth] No refresh token available');
-      return null;
-    }
+    const jar = cookies(req);
+    if (!jar['18vt_access']) return null;
     try {
-      const session = await supabase('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: jar['18vt_refresh'] }) });
-      res.setHeader('Set-Cookie', setAuthCookies(session));
-      console.log('[Auth] ✓ Token refreshed');
-      return { user: await supabase('/auth/v1/user', { method: 'GET' }, session.access_token), accessToken: session.access_token };
-    } catch (refreshError) { 
-      console.error('[Auth] Refresh failed:', refreshError.message);
-      return null; 
+        return { user: await supabase('/auth/v1/user', { method: 'GET' }, jar['18vt_access']), accessToken: jar['18vt_access'] };
+    } catch {
+        if (!jar['18vt_refresh']) return null;
+        try {
+            const session = await supabase('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: jar['18vt_refresh'] }) });
+            res.setHeader('Set-Cookie', setAuthCookies(session));
+            return { user: await supabase('/auth/v1/user', { method: 'GET' }, session.access_token), accessToken: session.access_token };
+        } catch { return null; }
     }
-  }
 };
 
-const requireUser = async (req, res) => { 
-  const auth = await accessUser(req, res); 
-  if (!auth) { 
-    console.log('[Auth] User required but not authenticated');
-    json(res, 401, { error: 'Sign in to use this feature.' }); 
-    return null; 
-  } 
-  return auth; 
+const requireUser = async (req, res) => {
+    const auth = await accessUser(req, res);
+    if (!auth) { json(res, 401, { error: 'Sign in to use this feature.' }); return null; }
+    return auth;
 };
 
 const rest = async (table, query, options, token) => supabase(`/rest/v1/${table}${query}`, options, token);
 
 const mapConversation = (item) => ({ id: item.id, prompt: item.prompt, reply: item.reply, fileName: item.file_name || '', modelName: item.model_name || '18vt AI', imageUrl: item.image_url || '', createdAt: item.created_at });
 const mapWatch = (item) => ({ id: item.id, mediaType: item.media_type, externalId: item.external_id, title: item.title, posterUrl: item.poster_url || '', year: item.year || '', progress: item.progress || 0, status: item.status || 'planned', createdAt: item.created_at, updatedAt: item.updated_at });
-const normalizeJikan = (item) => ({ externalId: String(item.mal_id), mediaType: 'anime', title: item.title, posterUrl: item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || '', year: String(item.aired?.prop?.from?.year || '') });
-const normalizeTmdb = (item, type) => ({ externalId: String(item.id), mediaType: type, title: item.title || item.name, posterUrl: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '', year: String(item.release_date?.split('-')[0] || item.first_air_date?.split('-')[0] || '') });
+const normalizeJikan = (item) => ({ externalId: String(item.mal_id), mediaType: 'anime', title: item.title, posterUrl: item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || '', year: String(item.aired?.prop?.from?.year || ''), score: item.score || '', overview: item.synopsis || '' });
+const normalizeTmdb = (item, type) => ({ externalId: String(item.id), mediaType: type, title: item.title || item.name, posterUrl: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '', year: String(item.release_date?.split('-')[0] || item.first_air_date?.split('-')[0] || ''), score: item.vote_average ? Number(item.vote_average).toFixed(1) : '', overview: item.overview || '' });
 
 const searchMedia = async (query, type) => {
-  console.log(`[Media] Searching ${type}: "${query}"`);
-  if (type === 'anime') {
-    const endpoint = query === 'popular' ? 'top/anime?limit=12&sfw=true' : `anime?q=${encodeURIComponent(query)}&limit=12&sfw=true`;
-    try {
-      const response = await fetch(`https://api.jikan.moe/v4/${endpoint}`); 
-      if (!response.ok) throw new Error('Anime search is temporarily unavailable.'); 
-      const data = await response.json(); 
-      console.log(`[Media] ✓ Found ${data.data?.length || 0} anime results`);
-      return data.data.map(normalizeJikan);
-    } catch (error) {
-      console.error('[Media] Anime search error:', error.message);
-      throw error;
+    if (type === 'anime') {
+        const endpoint = query === 'popular' ? 'top/anime?limit=12&sfw=true' : `anime?q=${encodeURIComponent(query)}&limit=12&sfw=true`;
+        const data = await cachedJson(`https://api.jikan.moe/v4/${endpoint}`, {}, 10 * 60_000);
+        if (!data.data) throw new Error('Anime search is temporarily unavailable.');
+        return data.data.map(normalizeJikan);
     }
-  }
-  if (!TMDB_API_KEY) {
-    console.log('[Media] TMDB_API_KEY not configured, returning demo');
-    return [{ externalId: 'demo-1', mediaType: type, title: `Search ready for "${query}"`, posterUrl: '', year: '', overview: 'Add TMDB_API_KEY in Vercel Environment Variables for live movie/TV search.' }];
-  }
-  const endpoint = query === 'popular' ? `trending/${type === 'tv' ? 'tv' : 'movie'}/week?api_key=${encodeURIComponent(TMDB_API_KEY)}` : `search/${type === 'tv' ? 'tv' : 'movie'}?api_key=${encodeURIComponent(TMDB_API_KEY)}&query=${encodeURIComponent(query)}`;
-  try {
-    const response = await fetch(`https://api.themoviedb.org/3/${endpoint}`); 
-    if (!response.ok) throw new Error('Film search is temporarily unavailable.'); 
-    const data = await response.json(); 
-    console.log(`[Media] ✓ Found ${data.results?.length || 0} film results`);
-    return data.results.map((item) => normalizeTmdb(item, type));
-  } catch (error) {
-    console.error('[Media] TMDB search error:', error.message);
-    throw error;
-  }
+    if (!TMDB_API_KEY) {
+        return [{ externalId: 'demo-1', mediaType: type, title: `Search ready for "${query}"`, posterUrl: '', year: '', overview: 'Add TMDB_API_KEY in Vercel Environment Variables for live movie/TV search.' }];
+    }
+    const endpoint = query === 'popular' ? `trending/${type === 'tv' ? 'tv' : 'movie'}/week?api_key=${encodeURIComponent(TMDB_API_KEY)}` : `search/${type === 'tv' ? 'tv' : 'movie'}?api_key=${encodeURIComponent(TMDB_API_KEY)}&query=${encodeURIComponent(query)}`;
+    const data = await cachedJson(`https://api.themoviedb.org/3/${endpoint}`, {}, 5 * 60_000);
+    if (!data.results) throw new Error('Film search is temporarily unavailable.');
+    return data.results.slice(0, 12).map((item) => normalizeTmdb(item, type));
 };
 
-const openRouter = async (requestBody, token) => {
-  console.log('[OpenRouter] Sending chat request');
-  if (!OPENROUTER_API_KEY) {
-    console.error('[OpenRouter] ERROR: OPENROUTER_API_KEY is not configured');
-    throw new Error('OpenRouter API key is not configured. Add OPENROUTER_API_KEY to Vercel Environment Variables. Get a key at https://openrouter.ai/keys');
-  }
-  console.log('[OpenRouter] API key present, making request...');
-  try {
-    const requestPayload = {
-      model: requestBody.model || 'meta-llama/llama-3.3-70b-instruct:free',
-      messages: requestBody.messages || [],
-      system: requestBody.system || 'You are a helpful assistant.'
-    };
-    console.log('[OpenRouter] Request:', { model: requestPayload.model, messageCount: requestPayload.messages.length });
-    
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { 
-      method: 'POST', 
-      headers: { 
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`, 
-        'Content-Type': 'application/json', 
-        'HTTP-Referer': 'https://18vt.vercel.app',
-        'X-Title': '18vt'
-      }, 
-      body: JSON.stringify(requestPayload) 
+const chatCompletion = async (model, messages, system) => {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        headers: {
+            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': process.env.PUBLIC_URL || 'https://18vt.vercel.app',
+            'X-Title': '18vt'
+        },
+        body: JSON.stringify({ model, messages, system })
     });
-
-    console.log(`[OpenRouter] Response status: ${response.status}`);
-    const data = await response.json();
-    
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      console.error('[OpenRouter] API Error:', response.status, JSON.stringify(data, null, 2));
-      if (response.status === 401) {
-        throw new Error('OpenRouter API key is invalid or expired. Check your OPENROUTER_API_KEY in Vercel Environment Variables.');
-      }
-      if (response.status === 429) {
-        throw new Error('OpenRouter rate limit exceeded. Try again in a moment.');
-      }
-      throw new Error(data?.error?.message || `OpenRouter API error (${response.status}): ${JSON.stringify(data)}`);
+        if (response.status === 401) throw Object.assign(new Error('OpenRouter API key is invalid or expired. Check OPENROUTER_API_KEY in Vercel Environment Variables.'), { status: 502 });
+        if (response.status === 429) throw Object.assign(new Error('AI provider rate limit reached. Try again in a moment.'), { status: 429 });
+        throw Object.assign(new Error(data?.error?.message || `AI provider error (${response.status})`), { status: 502 });
     }
-    
     const reply = data?.choices?.[0]?.message?.content || '';
-    console.log(`[OpenRouter] ✓ Success (${reply.length} chars)`);
+    if (!reply) throw new Error('The model returned an empty reply. Try again or pick another model.');
     return reply;
-  } catch (error) {
-    console.error('[OpenRouter] Request failed:', error.message);
-    throw error;
-  }
 };
 
 module.exports = async (req, res) => {
-  const requestId = crypto.randomBytes(4).toString('hex');
-  console.log(`\n[${requestId}] ${req.method} ${req.url}`);
-  
-  const url = new URL(req.url, `https://${req.headers.host || '18vt.vercel.app'}`); 
-  const route = url.searchParams.get('path') || url.pathname.replace(/^\/api/, '') || '/';
-  
-  try {
-    if (req.method === 'POST' && route === '/auth/signup') { 
-      console.log(`[${requestId}] Auth: Sign up`);
-      const input = await body(req); 
-      const name = String(input.name || '').trim(); 
-      const email = String(input.email || '').trim().toLowerCase(); 
-      const password = String(input.password || ''); 
-      if (name.length < 2) return json(res, 400, { error: 'Enter a name.' }); 
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: 'Enter a valid email.' }); 
-      if (password.length < 8) return json(res, 400, { error: 'Password must be 8+ characters.' }); 
-      const session = await supabase('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email, password, data: { name } }) }); 
-      console.log(`[${requestId}] ✓ Sign up successful for ${email}`);
-      return json(res, 201, { user: { id: session.user.id, email: session.user.email, name, createdAt: session.user.created_at } }, { 'Set-Cookie': setAuthCookies(session) }); 
-    }
-    
-    if (req.method === 'POST' && route === '/auth/signin') { 
-      console.log(`[${requestId}] Auth: Sign in`);
-      const input = await body(req); 
-      console.log(`[${requestId}] Attempting sign in for: ${input.email}`);
-      const session = await supabase('/auth/v1/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: input.email, password: input.password }) }); 
-      console.log(`[${requestId}] ✓ Sign in successful for ${input.email}`);
-      return json(res, 200, { user: publicUser(session.user) }, { 'Set-Cookie': setAuthCookies(session) }); 
-    }
-    
-    if (req.method === 'POST' && route === '/auth/signout') { 
-      console.log(`[${requestId}] Auth: Sign out`);
-      const auth = await accessUser(req, res); 
-      if (auth) await supabase('/auth/v1/logout', { method: 'POST' }, auth.accessToken).catch(() => {}); 
-      console.log(`[${requestId}] ✓ Sign out successful`);
-      return json(res, 200, { ok: true }, { 'Set-Cookie': clearAuthCookies() }); 
-    }
-    
-    if (req.method === 'GET' && route === '/auth/me') { 
-      console.log(`[${requestId}] Auth: Get current user`);
-      const auth = await accessUser(req, res); 
-      console.log(`[${requestId}] Current user: ${auth ? auth.user.email : 'anonymous'}`);
-      return json(res, 200, { user: auth ? publicUser(auth.user) : null }); 
-    }
+    const requestId = crypto.randomBytes(4).toString('hex');
 
-    if (req.method === 'GET' && route === '/conversations') { 
-      console.log(`[${requestId}] Conversations: List`);
-      const auth = await requireUser(req, res); 
-      if (!auth) return; 
-      const rows = await rest('conversations', `?select=*&user_id=eq.${encodeURIComponent(auth.user.id)}&order=created_at.desc`, {}, auth.accessToken); 
-      console.log(`[${requestId}] ✓ Found ${rows.length} conversations`);
-      return json(res, 200, { conversations: rows.map(mapConversation) }); 
-    }
-    
-    if (req.method === 'POST' && route === '/conversations') { 
-      console.log(`[${requestId}] Conversations: Create`);
-      const auth = await requireUser(req, res); 
-      if (!auth) return; 
-      const input = await body(req); 
-      const item = { user_id: auth.user.id, prompt: String(input.prompt || '').slice(0, 1000), reply: String(input.reply || '').slice(0, 50000), file_name: String(input.fileName || '').slice(0, 200), model_name: String(input.modelName || '').slice(0, 100), image_url: String(input.imageUrl || '').slice(0, 500), created_at: new Date().toISOString() }; 
-      const result = await rest('conversations', '', { method: 'POST', body: JSON.stringify(item) }, auth.accessToken); 
-      console.log(`[${requestId}] ✓ Conversation created`);
-      return json(res, 201, { conversation: mapConversation(result[0]) }); 
-    }
-    
-    if (req.method === 'DELETE' && route === '/conversations') { 
-      console.log(`[${requestId}] Conversations: Delete all`);
-      const auth = await requireUser(req, res); 
-      if (!auth) return; 
-      await rest('conversations', `?user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken); 
-      console.log(`[${requestId}] ✓ All conversations deleted`);
-      return json(res, 200, { ok: true }); 
-    }
+    const url = new URL(req.url, `https://${req.headers.host || '18vt.vercel.app'}`);
+    // Vercel's catch-all routes /api/<anything> here. Strip the /api prefix and trailing slash.
+    const route = (url.pathname.replace(/^\/api/, '') || '/').replace(/\/+$/, '') || '/';
+    const method = req.method === 'HEAD' ? 'GET' : req.method;
+    console.log(`\n[${requestId}] ${method} ${route}`);
 
-    if (req.method === 'GET' && route === '/media/search') { 
-      console.log(`[${requestId}] Media: Search`);
-      const auth = await requireUser(req, res); 
-      if (!auth) return; 
-      const type = ['movie', 'tv', 'anime'].includes(url.searchParams.get('type')) ? url.searchParams.get('type') : 'movie'; 
-      const q = String(url.searchParams.get('q') || 'popular'); 
-      const results = await searchMedia(q, type); 
-      console.log(`[${requestId}] ✓ Media search complete`);
-      return json(res, 200, { results }); 
-    }
-    
-    if (req.method === 'GET' && route === '/watchlist') { 
-      console.log(`[${requestId}] Watchlist: List`);
-      const auth = await requireUser(req, res); 
-      if (!auth) return; 
-      const rows = await rest('watchlist', `?select=*&user_id=eq.${encodeURIComponent(auth.user.id)}&order=created_at.desc`, {}, auth.accessToken); 
-      console.log(`[${requestId}] ✓ Found ${rows.length} watchlist items`);
-      return json(res, 200, { items: rows.map(mapWatch) }); 
-    }
-    
-    if (req.method === 'POST' && route === '/watchlist') { 
-      console.log(`[${requestId}] Watchlist: Add item`);
-      const auth = await requireUser(req, res); 
-      if (!auth) return; 
-      const input = await body(req); 
-      const mediaType = String(input.mediaType || 'movie'); 
-      const item = { user_id: auth.user.id, media_type: mediaType, external_id: String(input.externalId || ''), title: String(input.title || '').slice(0, 200), poster_url: String(input.posterUrl || '').slice(0, 500), year: String(input.year || ''), progress: 0, status: 'planned', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; 
-      const result = await rest('watchlist', '', { method: 'POST', body: JSON.stringify(item) }, auth.accessToken); 
-      console.log(`[${requestId}] ✓ Item added to watchlist`);
-      return json(res, 201, { item: mapWatch(result[0]) }); 
-    }
-    
-    if (req.method === 'PATCH' && route.startsWith('/watchlist/')) { 
-      console.log(`[${requestId}] Watchlist: Update item`);
-      const auth = await requireUser(req, res); 
-      if (!auth) return; 
-      const input = await body(req); 
-      const progress = Math.max(0, Math.min(100, Number(input.progress) || 0)); 
-      const update = { progress, updated_at: new Date().toISOString(), ...input.status && { status: input.status } }; 
-      const id = route.split('/').pop(); 
-      const result = await rest('watchlist', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'PATCH', body: JSON.stringify(update) }, auth.accessToken); 
-      console.log(`[${requestId}] ✓ Watchlist item updated`);
-      return json(res, 200, { item: mapWatch(result[0]) }); 
-    }
-    
-    if (req.method === 'DELETE' && route.startsWith('/watchlist/')) { 
-      console.log(`[${requestId}] Watchlist: Delete item`);
-      const auth = await requireUser(req, res); 
-      if (!auth) return; 
-      await rest('watchlist', `?id=eq.${encodeURIComponent(route.split('/').pop())}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken); 
-      console.log(`[${requestId}] ✓ Watchlist item deleted`);
-      return json(res, 200, { ok: true }); 
-    }
+    try {
+        // ── Health ─────────────────────────────────────────────────────
+        if (method === 'GET' && route === '/health') {
+            const env = {
+                SUPABASE_URL: Boolean(process.env.SUPABASE_URL),
+                SUPABASE_PUBLISHABLE_KEY: Boolean(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY),
+                OPENROUTER_API_KEY: Boolean(process.env.OPENROUTER_API_KEY),
+                TMDB_API_KEY: Boolean(process.env.TMDB_API_KEY)
+            };
+            const missing = Object.entries(env).filter(([, ok]) => !ok).map(([key]) => key);
+            return json(res, 200, {
+                status: missing.length === 0 ? 'ok' : 'degraded',
+                service: '18vt',
+                uptimeSeconds: Math.round(process.uptime()),
+                env,
+                missing,
+                message: missing.length === 0
+                    ? 'All required environment variables are configured.'
+                    : `Missing environment variables: ${missing.join(', ')}. Add them in Vercel Project Settings and redeploy.`
+            }, { 'Cache-Control': 'no-store' });
+        }
 
-    if (req.method === 'POST' && route === '/generate-image') { 
-      console.log(`[${requestId}] Image: Generate`);
-      const auth = await requireUser(req, res); 
-      if (!auth) return; 
-      const input = await body(req); 
-      const prompt = String(input.prompt || '').slice(0, 500); 
-      const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`; 
-      console.log(`[${requestId}] ✓ Image URL generated`);
-      return json(res, 200, { imageUrl }); 
+        // ── Auth ───────────────────────────────────────────────────────
+        if (route.startsWith('/auth/')) {
+            const limiter = rateLimit('auth', clientKey(req), RATE_LIMITS.auth);
+            if (!limiter.ok) return json(res, 429, { error: `Too many attempts. Try again in ${limiter.retryAfter}s.` }, { 'Retry-After': String(limiter.retryAfter) });
+
+            if (method === 'POST' && route === '/auth/signup') {
+                const input = await body(req);
+                const name = String(input.name || '').trim();
+                const email = String(input.email || '').trim().toLowerCase();
+                const password = String(input.password || '');
+                if (name.length < 2) return json(res, 400, { error: 'Enter a name.' });
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: 'Enter a valid email.' });
+                if (password.length < 8) return json(res, 400, { error: 'Password must be 8+ characters.' });
+                const session = await supabase('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email, password, data: { name } }) });
+                if (!session.user) return json(res, 200, { needsEmailConfirmation: true, message: 'Account created! Check your email to confirm, then sign in.' });
+                return json(res, 201, { user: { id: session.user.id, email: session.user.email, name, createdAt: session.user.created_at } }, { 'Set-Cookie': setAuthCookies(session) });
+            }
+
+            if (method === 'POST' && route === '/auth/signin') {
+                const input = await body(req);
+                const session = await supabase('/auth/v1/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: String(input.email || '').trim().toLowerCase(), password: String(input.password || '') }) });
+                return json(res, 200, { user: publicUser(session.user) }, { 'Set-Cookie': setAuthCookies(session) });
+            }
+
+            if (method === 'POST' && route === '/auth/signout') {
+                const auth = await accessUser(req, res);
+                if (auth) await supabase('/auth/v1/logout', { method: 'POST' }, auth.accessToken).catch(() => {});
+                return json(res, 200, { ok: true }, { 'Set-Cookie': clearAuthCookies() });
+            }
+
+            if (method === 'GET' && route === '/auth/me') {
+                const auth = await accessUser(req, res);
+                return json(res, 200, { user: auth ? publicUser(auth.user) : null });
+            }
+
+            return json(res, 405, { error: `Method ${method} not allowed for ${route}` }, { Allow: 'GET, POST' });
+        }
+
+        // ── Chat ───────────────────────────────────────────────────────
+        if (route === '/chat') {
+            if (method !== 'POST') return json(res, 405, { error: 'Use POST for /api/chat' }, { Allow: 'POST' });
+            const limiter = rateLimit('chat', clientKey(req), RATE_LIMITS.chat);
+            if (!limiter.ok) return json(res, 429, { error: `Slow down a little — try again in ${limiter.retryAfter}s.` }, { 'Retry-After': String(limiter.retryAfter) });
+
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+
+            const input = await body(req);
+            const requestedModel = String(input.model || DEFAULT_MODEL);
+            const messages = Array.isArray(input.messages) ? input.messages.slice(-20) : [];
+            if (!messages.length) return json(res, 400, { error: 'Send at least one message.' });
+            const system = String(input.system || 'You are a helpful assistant.').slice(0, 8000);
+            const streaming = input.stream === true;
+
+            if (streaming) {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+                res.setHeader('Cache-Control', 'no-store');
+                res.setHeader('Connection', 'keep-alive');
+                let closed = false;
+                req.on('close', () => { closed = true; });
+
+                const models = [requestedModel, ...FALLBACK_CHAIN.filter((m) => m !== requestedModel)];
+                let upstream = null;
+                for (const model of models) {
+                    try {
+                        upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                            method: 'POST',
+                            signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+                            headers: {
+                                Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+                                'Content-Type': 'application/json',
+                                'HTTP-Referer': process.env.PUBLIC_URL || 'https://18vt.vercel.app',
+                                'X-Title': '18vt'
+                            },
+                            body: JSON.stringify({ model, messages, system, stream: true })
+                        });
+                        if (upstream.ok) { if (model !== requestedModel) res.write(`event: notice\ndata: ${JSON.stringify({ message: `${requestedModel} was busy, switched to ${model}` })}\n\n`); break; }
+                        if (upstream.status === 401) throw Object.assign(new Error('OpenRouter API key is invalid or expired.'), { fatal: true });
+                        if (upstream.status !== 429 && upstream.status < 500) throw Object.assign(new Error(`AI provider error (${upstream.status})`), { fatal: true });
+                        upstream = null; // fall through to next model
+                    } catch (error) {
+                        if (error.fatal) {
+                            res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+                            return res.end();
+                        }
+                        upstream = null;
+                    }
+                }
+                if (!upstream) {
+                    res.write(`event: error\ndata: ${JSON.stringify({ error: 'All AI models are busy right now. Try again shortly.' })}\n\n`);
+                    return res.end();
+                }
+
+                const reader = upstream.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                while (!closed) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed.startsWith('data:')) continue;
+                        const payload = trimmed.slice(5).trim();
+                        if (payload === '[DONE]') { res.write('event: done\ndata: {}\n\n'); return res.end(); }
+                        try {
+                            const parsed = JSON.parse(payload);
+                            const delta = parsed.choices?.[0]?.delta?.content || '';
+                            if (delta) {
+                                res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+                                if (typeof res.flush === 'function') res.flush();
+                            }
+                        } catch {}
+                    }
+                }
+                return res.end();
+            }
+
+            // Non-streaming with automatic model fallback.
+            const models = [requestedModel, ...FALLBACK_CHAIN.filter((m) => m !== requestedModel)];
+            let lastError = null;
+            for (const model of models) {
+                try { return json(res, 200, { reply: await chatCompletion(model, messages, system), model }); }
+                catch (error) { lastError = error; if (error.status === 429 || error.status === 502) continue; throw error; }
+            }
+            throw lastError || new Error('Chat failed.');
+        }
+
+        // ── Conversations ──────────────────────────────────────────────
+        if (route === '/conversations') {
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+
+            if (method === 'GET') {
+                const rows = await rest('conversations', `?select=*&user_id=eq.${encodeURIComponent(auth.user.id)}&order=created_at.desc`, {}, auth.accessToken);
+                return json(res, 200, { conversations: rows.map(mapConversation) });
+            }
+
+            if (method === 'POST') {
+                const input = await body(req);
+                const item = { user_id: auth.user.id, prompt: String(input.prompt || '').slice(0, 1000), reply: String(input.reply || '').slice(0, 50000), file_name: String(input.fileName || '').slice(0, 200), model_name: String(input.modelName || '').slice(0, 100), image_url: String(input.imageUrl || '').slice(0, 500), created_at: new Date().toISOString() };
+                const result = await rest('conversations', '', { method: 'POST', body: JSON.stringify(item) }, auth.accessToken);
+                return json(res, 201, { conversation: mapConversation(result[0]) });
+            }
+
+            if (method === 'DELETE') {
+                await rest('conversations', `?user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken);
+                return json(res, 200, { ok: true });
+            }
+
+            return json(res, 405, { error: `Method ${method} not allowed for ${route}` }, { Allow: 'GET, POST, DELETE' });
+        }
+
+        if (route.startsWith('/conversations/')) {
+            if (method !== 'DELETE') return json(res, 405, { error: 'Use DELETE for /api/conversations/:id' }, { Allow: 'DELETE' });
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+            const id = route.split('/').pop();
+            await rest('conversations', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken);
+            return json(res, 200, { ok: true });
+        }
+
+        // ── Media ──────────────────────────────────────────────────────
+        if (route === '/media/search') {
+            if (method !== 'GET') return json(res, 405, { error: 'Use GET for /api/media/search' }, { Allow: 'GET' });
+            const limiter = rateLimit('media', clientKey(req), RATE_LIMITS.media);
+            if (!limiter.ok) return json(res, 429, { error: `Too many searches — retry in ${limiter.retryAfter}s.` }, { 'Retry-After': String(limiter.retryAfter) });
+
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+            const type = ['movie', 'tv', 'anime'].includes(url.searchParams.get('type')) ? url.searchParams.get('type') : 'movie';
+            const q = String(url.searchParams.get('q') || 'popular').slice(0, 200);
+            return json(res, 200, { results: await searchMedia(q, type) });
+        }
+
+        // ── Watchlist ──────────────────────────────────────────────────
+        if (route === '/watchlist') {
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+
+            if (method === 'GET') {
+                const rows = await rest('watchlist', `?select=*&user_id=eq.${encodeURIComponent(auth.user.id)}&order=created_at.desc`, {}, auth.accessToken);
+                return json(res, 200, { items: rows.map(mapWatch) });
+            }
+
+            if (method === 'POST') {
+                const input = await body(req);
+                const item = { user_id: auth.user.id, media_type: String(input.mediaType || 'movie'), external_id: String(input.externalId || ''), title: String(input.title || '').slice(0, 200), poster_url: String(input.posterUrl || '').slice(0, 500), year: String(input.year || ''), progress: 0, status: 'planned', created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+                const result = await rest('watchlist', '', { method: 'POST', body: JSON.stringify(item) }, auth.accessToken);
+                return json(res, 201, { item: mapWatch(result[0]) });
+            }
+
+            return json(res, 405, { error: `Method ${method} not allowed for ${route}` }, { Allow: 'GET, POST' });
+        }
+
+        if (route.startsWith('/watchlist/')) {
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+            const id = route.split('/').pop();
+
+            if (method === 'PATCH') {
+                const input = await body(req);
+                const progress = Math.max(0, Math.min(100, Number(input.progress) || 0));
+                const update = { progress, updated_at: new Date().toISOString(), ...(input.status && { status: String(input.status).slice(0, 40) }) };
+                const result = await rest('watchlist', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'PATCH', body: JSON.stringify(update) }, auth.accessToken);
+                return json(res, 200, { item: mapWatch(result[0]) });
+            }
+
+            if (method === 'DELETE') {
+                await rest('watchlist', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken);
+                return json(res, 200, { ok: true });
+            }
+
+            return json(res, 405, { error: `Method ${method} not allowed for ${route}` }, { Allow: 'PATCH, DELETE' });
+        }
+
+        // ── Image generation ───────────────────────────────────────────
+        if (route === '/generate-image') {
+            if (method !== 'POST') return json(res, 405, { error: 'Use POST for /api/generate-image' }, { Allow: 'POST' });
+            const limiter = rateLimit('media', clientKey(req), RATE_LIMITS.media);
+            if (!limiter.ok) return json(res, 429, { error: `Slow down — retry in ${limiter.retryAfter}s.` }, { 'Retry-After': String(limiter.retryAfter) });
+
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+            const input = await body(req);
+            const prompt = String(input.prompt || '').slice(0, 500);
+            if (!prompt.trim()) return json(res, 400, { error: 'Describe the image you want.' });
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true&seed=${Math.floor(Math.random() * 1e9)}`;
+            return json(res, 200, { imageUrl });
+        }
+
+        return json(res, 404, { error: `No route for ${method} ${route}`, hint: 'GET /api/health lists configured environment variables.' });
+    } catch (error) {
+        console.error(`[${requestId}] ERROR:`, error.message);
+        return json(res, error.status || 500, { error: error.message || 'Server error.', requestId });
     }
-    
-    if (req.method === 'POST' && route === '/chat') { 
-      console.log(`[${requestId}] Chat: Send message`);
-      const auth = await requireUser(req, res); 
-      if (!auth) return; 
-      const input = await body(req); 
-      console.log(`[${requestId}] Calling OpenRouter...`);
-      const reply = await openRouter(input, auth.accessToken);
-      console.log(`[${requestId}] ✓ Chat complete`);
-      return json(res, 200, { reply }); 
-    }
-    
-    console.log(`[${requestId}] Route not found: ${route}`);
-    return json(res, 404, { error: 'Not found' });
-  } catch (error) { 
-    console.error(`[${requestId}] ERROR:`, error.message);
-    console.error(`[${requestId}] Stack:`, error.stack);
-    return json(res, 500, { error: error.message || 'Server error.', requestId }); 
-  }
 };

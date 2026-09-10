@@ -25,13 +25,32 @@ Never put `OPENROUTER_API_KEY`, a Supabase service-role key, or any other privat
 
 ## 3. Deploy
 
-Import this repository into Vercel. The included `vercel.json` keeps `/` pointed at `indev.html`, while `api/[...path].js` handles the nested API endpoints.
+Import this repository into Vercel. The included `.vercelignore` ships only `api/`, `indev.html`, and `vercel.json`; the included `vercel.json` keeps `/` pointed at `indev.html`, adds security headers, and routes `api/[...path].js` for all API endpoints. Node 20+ is required (`engines` in `package.json`).
 
 After deploying, test:
 
+- **Open `https://your-app.vercel.app/api/health` first.** It returns which environment variables are configured (booleans only, never values) and lists anything missing. The app also shows a banner automatically if anything is missing.
 - Sign up, sign out, and sign in again.
-- Send an AI prompt.
+- Send an AI prompt — replies stream in live (toggleable in the settings menu) with a stop button, automatic model fallback when one is busy, and markdown rendering.
+- Copy or delete any exchange, or clear all conversations from the settings menu.
 - Open Watch, search anime, and add a title to your watchlist.
 - Move the progress slider and reload the page.
+
+## API overview
+
+| Endpoint | Notes |
+|---|---|
+| `GET /api/health` | Env-var status (booleans only), uptime |
+| `POST /api/auth/signup` | Validates input, sets auth cookies |
+| `POST /api/auth/signin` | Rate-limited per IP |
+| `POST /api/auth/signout` / `GET /api/auth/me` | |
+| `GET|POST|DELETE /api/conversations` | Auth required |
+| `DELETE /api/conversations/:id` | Delete one exchange |
+| `GET /api/media/search` | Cached upstream (Jikan/TMDB), rate-limited |
+| `GET|POST /api/watchlist`, `PATCH|DELETE /api/watchlist/:id` | Auth required |
+| `POST /api/chat` | Streaming (SSE) with model fallback, or JSON; rate-limited |
+| `POST /api/generate-image` | Pollinations, rate-limited |
+
+Wrong HTTP methods return `405` with an `Allow` header; unknown routes return `404` with a hint to check `/api/health`.
 
 Anime search uses Jikan without a key. Movie and TV search uses TMDB when `TMDB_API_KEY` is present. Image generation uses the free Pollinations image endpoint.
