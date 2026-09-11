@@ -1,0 +1,7 @@
+# Deploy only what the app needs to run. Everything else stays out of Vercel.
+# Ignore everything in the project root...
+/*
+# ...then allow back only these:
+!api
+!indev.html
+!vercel.json
