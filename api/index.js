@@ -6,9 +6,11 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
-const DEFAULT_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
-const VISION_MODEL = 'google/gemini-2.0-flash-exp:free';
-const FALLBACK_CHAIN = [DEFAULT_MODEL, 'google/gemini-2.0-flash-exp:free', 'deepseek/deepseek-chat-v3-0324:free'];
+// Verified free models (live-tested 2026-09-12). openrouter/free is an auto-router
+// across all free models; the rest are direct free endpoints.
+const DEFAULT_MODEL = 'openrouter/free';
+const VISION_MODEL = 'inclusionai/ling-3.0-flash-vl:free';
+const FALLBACK_CHAIN = [DEFAULT_MODEL, 'nvidia/nemotron-3-super-120b-a12b:free', 'google/gemma-4-26b-a4b-it:free', 'nex-agi/nex-n2.5-pro:free'];
 const MAX_BODY_BYTES = 12_000_000;
 const UPSTREAM_TIMEOUT_MS = 55_000; // stay under Vercel's function timeout
 
@@ -164,7 +166,7 @@ const chatCompletion = async (model, messages, system) => {
         throw Object.assign(new Error(data?.error?.message || `AI provider error (${response.status})`), { status: 502 });
     }
     const reply = data?.choices?.[0]?.message?.content || '';
-    if (!reply) throw new Error('The model returned an empty reply. Try again or pick another model.');
+    if (!reply) throw Object.assign(new Error('The model returned an empty reply. Try again or pick another model.'), { status: 502 });
     return reply;
 };
 
@@ -233,10 +235,11 @@ module.exports = async (req, res) => {
         if (route === '/models') {
             if (method !== 'GET') return json(res, 405, { error: 'Use GET for /api/models' }, { Allow: 'GET' });
             const curatedNames = {
-                'meta-llama/llama-3.3-70b-instruct:free': 'Llama 3.3 70B (Free)',
-                'google/gemini-2.0-flash-exp:free': 'Gemini 2.0 Flash (Free)',
-                'deepseek/deepseek-chat-v3-0324:free': 'DeepSeek V3 (Free)',
-                'qwen/qwen3-30b-a3b:free': 'Qwen 3 30B (Free)'
+                'openrouter/free': 'Auto (best free model)',
+                'nvidia/nemotron-3-super-120b-a12b:free': 'NVIDIA Nemotron 3 Super 120B (Free)',
+                'google/gemma-4-26b-a4b-it:free': 'Google Gemma 4 26B (Free)',
+                'nex-agi/nex-n2.5-pro:free': 'Nex-N2.5 Pro (Free)',
+                'inclusionai/ling-3.0-flash-vl:free': 'Ling 3.0 Flash VL (Free)'
             };
             const curated = Object.keys(curatedNames);
             let models = curated.map((id) => ({ id, name: curatedNames[id] }));
@@ -313,14 +316,19 @@ module.exports = async (req, res) => {
                 res.setHeader('Cache-Control', 'no-store');
                 res.setHeader('Connection', 'keep-alive');
                 let closed = false;
-                req.on('close', () => { closed = true; });
+                // NOTE: req 'close' fires as soon as the body has been read, so it
+                // cannot be used here. Listen on the response instead, and only
+                // treat it as closed if the client hung up before we finished.
+                res.on('close', () => { if (!res.writableEnded) closed = true; });
                 // Keepalive comments so proxies keep the stream open while the model thinks.
                 const pings = setInterval(() => { if (!closed) res.write(': ping\n\n'); }, 15_000);
                 const finishStream = () => { clearInterval(pings); res.end(); };
 
                 const models = [requestedModel, ...FALLBACK_CHAIN.filter((m) => m !== requestedModel)];
-                let upstream = null;
+                let relay = null;
                 for (const model of models) {
+                    if (closed) break;
+                    let upstream;
                     try {
                         upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                             method: 'POST',
@@ -333,26 +341,55 @@ module.exports = async (req, res) => {
                             },
                             body: JSON.stringify({ model, messages, system, stream: true })
                         });
-                        if (upstream.ok) { if (model !== requestedModel) res.write(`event: notice\ndata: ${JSON.stringify({ message: `${requestedModel} was busy, switched to ${model}` })}\n\n`); break; }
-                        if (upstream.status === 401) throw Object.assign(new Error('OpenRouter API key is invalid or expired.'), { fatal: true });
-                        if (upstream.status !== 429 && upstream.status < 500) throw Object.assign(new Error(`AI provider error (${upstream.status})`), { fatal: true });
-                        upstream = null; // fall through to next model
-                    } catch (error) {
-                        if (error.fatal) {
-                            res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
-                            return finishStream();
-                        }
-                        upstream = null;
+                    } catch { continue; }
+                    if (!upstream.ok) {
+                        if (upstream.status === 401) { res.write(`event: error\ndata: ${JSON.stringify({ error: 'OpenRouter API key is invalid or expired.' })}\n\n`); return finishStream(); }
+                        if (upstream.status === 429 || upstream.status >= 500) continue;
+                        res.write(`event: error\ndata: ${JSON.stringify({ error: `AI provider error (${upstream.status})` })}\n\n`);
+                        return finishStream();
                     }
+                    // HTTP 200 can still carry a provider failure as an in-stream
+                    // JSON chunk ({ error: ... } with empty choices). Peek at the
+                    // first data line so those failures fall back like HTTP errors.
+                    const reader = upstream.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    let verdict = 'error'; // error | content | done | silent
+                    const peekDeadline = Date.now() + 25_000;
+                    while (!closed && Date.now() < peekDeadline) {
+                        const newlineAt = buffer.indexOf('\n');
+                        if (newlineAt < 0) {
+                            const { done, value } = await reader.read();
+                            if (done) { verdict = 'silent'; break; }
+                            buffer += decoder.decode(value, { stream: true });
+                            continue;
+                        }
+                        const line = buffer.slice(0, newlineAt).trim();
+                        buffer = buffer.slice(newlineAt + 1);
+                        if (!line || line.startsWith(':')) continue;
+                        if (!line.startsWith('data:')) continue;
+                        const payload = line.slice(5).trim();
+                        if (payload === '[DONE]') { verdict = 'done'; break; }
+                        let parsed = null;
+                        try { parsed = JSON.parse(payload); } catch { continue; }
+                        if (parsed && parsed.error) { verdict = 'error'; break; }
+                        if (parsed?.choices?.[0]?.delta?.content) { verdict = 'content'; buffer = `${line}\n${buffer}`; break; }
+                    }
+                    if (verdict === 'content') {
+                        relay = { reader, decoder, buffer };
+                        if (model !== requestedModel) res.write(`event: notice\ndata: ${JSON.stringify({ message: `${requestedModel} was busy, switched to ${model}` })}\n\n`);
+                        break;
+                    }
+                    try { await reader.cancel(); } catch { /* already closed */ }
                 }
-                if (!upstream) {
+                if (!relay) {
                     res.write(`event: error\ndata: ${JSON.stringify({ error: 'All AI models are busy right now. Try again shortly.' })}\n\n`);
                     return finishStream();
                 }
 
-                const reader = upstream.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
+                const reader = relay.reader;
+                const decoder = relay.decoder;
+                let buffer = relay.buffer;
                 while (!closed) {
                     const { done, value } = await reader.read();
                     if (done) break;
@@ -366,6 +403,7 @@ module.exports = async (req, res) => {
                         if (payload === '[DONE]') { res.write('event: done\ndata: {}\n\n'); return finishStream(); }
                         try {
                             const parsed = JSON.parse(payload);
+                            if (parsed.error) continue; // provider hiccup mid-stream
                             const delta = parsed.choices?.[0]?.delta?.content || '';
                             if (delta) {
                                 res.write(`data: ${JSON.stringify({ delta })}\n\n`);
