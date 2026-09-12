@@ -40,10 +40,10 @@ async function cachedJson(url, options = {}, ttlMs = 5 * 60_000) {
     if (hit && Date.now() < hit.expires) return hit.data;
     const response = await fetch(url, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS), ...options });
     const data = await response.json().catch(() => ({}));
-    if (response.ok) {
-        cache.set(url, { data, expires: Date.now() + ttlMs });
-        if (cache.size > 500) cache.clear();
-    }
+    // Cache successes for the TTL; cache failures briefly so a rate-limited
+    // upstream isn't hammered on every request.
+    cache.set(url, { data, expires: Date.now() + (response.ok ? ttlMs : 30_000) });
+    if (cache.size > 500) cache.clear();
     return data;
 }
 
@@ -187,18 +187,63 @@ module.exports = async (req, res) => {
                 TMDB_API_KEY: Boolean(process.env.TMDB_API_KEY)
             };
             const missing = Object.entries(env).filter(([, ok]) => !ok).map(([key]) => key);
+            // ?deep=1 also probes each upstream (adds ~1s; for manual debugging).
+            let deep = null;
+            if (url.searchParams.get('deep') === '1') {
+                const probe = async (target, targetUrl, headers = {}) => {
+                    const started = Date.now();
+                    try {
+                        const response = await fetch(targetUrl, { signal: AbortSignal.timeout(5000), headers });
+                        return { ok: response.ok, status: response.status, ms: Date.now() - started };
+                    } catch (error) {
+                        return { ok: false, status: 0, ms: Date.now() - started, error: error.name === 'TimeoutError' ? 'timeout' : 'unreachable' };
+                    }
+                };
+                const notConfigured = () => ({ ok: false, status: 0, ms: 0, error: 'not configured' });
+                const [supabaseCheck, openrouterCheck, tmdbCheck, jikanCheck] = await Promise.all([
+                    SUPABASE_URL ? probe('supabase', `${SUPABASE_URL}/auth/v1/health`) : Promise.resolve(notConfigured()),
+                    OPENROUTER_API_KEY ? probe('openrouter', 'https://openrouter.ai/api/v1/auth/key', { Authorization: `Bearer ${OPENROUTER_API_KEY}` }) : Promise.resolve(notConfigured()),
+                    TMDB_API_KEY ? probe('tmdb', `https://api.themoviedb.org/3/configuration?api_key=${encodeURIComponent(TMDB_API_KEY)}`) : Promise.resolve(notConfigured()),
+                    probe('jikan', 'https://api.jikan.moe/v4/anime?q=test&limit=1')
+                ]);
+                deep = { supabase: supabaseCheck, openrouter: openrouterCheck, tmdb: tmdbCheck, jikan: jikanCheck };
+            }
             return json(res, 200, {
                 status: missing.length === 0 ? 'ok' : 'degraded',
                 service: '18vt',
-                version: '1.1.0',
-                models: ['meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-2.0-flash-exp:free', 'deepseek/deepseek-chat-v3-0324:free', 'qwen/qwen3-30b-a3b:free'],
+                version: '1.2.0',
                 uptimeSeconds: Math.round(process.uptime()),
                 env,
                 missing,
+                ...(deep && { deep }),
                 message: missing.length === 0
                     ? 'All required environment variables are configured.'
                     : `Missing environment variables: ${missing.join(', ')}. Add them in Vercel Project Settings and redeploy.`
             }, { 'Cache-Control': 'no-store' });
+        }
+
+        // ── Models (live free-model list for the picker) ───────────────
+        if (route === '/models') {
+            if (method !== 'GET') return json(res, 405, { error: 'Use GET for /api/models' }, { Allow: 'GET' });
+            const curatedNames = {
+                'meta-llama/llama-3.3-70b-instruct:free': 'Llama 3.3 70B (Free)',
+                'google/gemini-2.0-flash-exp:free': 'Gemini 2.0 Flash (Free)',
+                'deepseek/deepseek-chat-v3-0324:free': 'DeepSeek V3 (Free)',
+                'qwen/qwen3-30b-a3b:free': 'Qwen 3 30B (Free)'
+            };
+            const curated = Object.keys(curatedNames);
+            let models = curated.map((id) => ({ id, name: curatedNames[id] }));
+            try {
+                const data = await cachedJson('https://openrouter.ai/api/v1/models', OPENROUTER_API_KEY ? { headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}` } } : {}, 10 * 60_000);
+                const free = (data?.data || []).filter((m) => typeof m.id === 'string' && m.id.endsWith(':free'));
+                const extra = free
+                    .filter((m) => !curated.includes(m.id))
+                    .sort((a, b) => (b.context_length || 0) - (a.context_length || 0))
+                    .slice(0, 14)
+                    .map((m) => ({ id: m.id, name: String(m.name || m.id).replace(/\s*\(free\)$/i, ''), context: m.context_length || 0 }));
+                models = [...models, ...extra];
+            } catch { /* curated list stands */ }
+            return json(res, 200, { models }, { 'Cache-Control': 'public, max-age=300' });
         }
 
         // ── Auth ───────────────────────────────────────────────────────
@@ -365,11 +410,50 @@ module.exports = async (req, res) => {
             const auth = await requireUser(req, res);
             if (!auth) return;
             const id = route.split('/').pop();
-            await rest('conversations', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken);
+            const result = await rest('conversations', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken);
+            if (!Array.isArray(result) || result.length === 0) return json(res, 404, { error: 'Conversation not found.' });
             return json(res, 200, { ok: true });
         }
 
         // ── Media ──────────────────────────────────────────────────────
+        if (route === '/media/detail') {
+            if (method !== 'GET') return json(res, 405, { error: 'Use GET for /api/media/detail' }, { Allow: 'GET' });
+            const limiter = rateLimit('media', clientKey(req), RATE_LIMITS.media);
+            if (!limiter.ok) return json(res, 429, { error: `Too many requests — retry in ${limiter.retryAfter}s.` }, { 'Retry-After': String(limiter.retryAfter) });
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+            const type = ['movie', 'tv', 'anime'].includes(url.searchParams.get('type')) ? url.searchParams.get('type') : 'movie';
+            const id = String(url.searchParams.get('id') || '').slice(0, 40);
+            if (!id) return json(res, 400, { error: 'Missing media id.' });
+
+            if (type === 'anime') {
+                const data = await cachedJson(`https://api.jikan.moe/v4/anime/${encodeURIComponent(id)}`, {}, 30 * 60_000);
+                const item = data?.data;
+                if (!item) return json(res, 404, { error: 'Anime not found.' });
+                const raw = item.trailer?.url || item.trailer?.images?.maximum_image_url || '';
+                const match = raw.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|watch\?v=))([\w-]{6,20})/);
+                return json(res, 200, {
+                    title: item.title,
+                    trailerUrl: match ? `https://www.youtube.com/watch?v=${match[1]}` : '',
+                    embedUrl: match ? `https://www.youtube-nocookie.com/embed/${match[1]}?autoplay=1&rel=0` : ''
+                });
+            }
+            if (!TMDB_API_KEY) return json(res, 501, { error: 'TMDB_API_KEY is not configured, so trailers are unavailable for movies and TV.' });
+            const data = await cachedJson(`https://api.themoviedb.org/3/${type}/${encodeURIComponent(id)}?api_key=${encodeURIComponent(TMDB_API_KEY)}&append_to_response=videos`, {}, 30 * 60_000);
+            if (data?.success === false || !data?.id) return json(res, 404, { error: 'Title not found.' });
+            const videos = data.videos?.results || [];
+            const trailer = videos.find((v) => v.site === 'YouTube' && v.official && v.type === 'Trailer')
+                || videos.find((v) => v.site === 'YouTube' && v.type === 'Trailer')
+                || videos.find((v) => v.site === 'YouTube');
+            return json(res, 200, {
+                title: data.title || data.name,
+                trailerUrl: trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : '',
+                embedUrl: trailer ? `https://www.youtube-nocookie.com/embed/${trailer.key}?autoplay=1&rel=0` : '',
+                runtime: data.runtime || data.episode_run_time?.[0] || '',
+                genres: (data.genres || []).slice(0, 4).map((g) => g.name)
+            });
+        }
+
         if (route === '/media/search') {
             if (method !== 'GET') return json(res, 405, { error: 'Use GET for /api/media/search' }, { Allow: 'GET' });
             const limiter = rateLimit('media', clientKey(req), RATE_LIMITS.media);

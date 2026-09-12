@@ -6,17 +6,115 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>18vt</title>
     <link rel="icon" href="https://i.ibb.co/9HVFww1f/geminix-logo.png" type="image/png">
-   
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Google Fonts -->
+    <!-- Google Fonts (preconnected, non-blocking with display=swap) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&family=PT+Sans:wght@400;700&display=swap" rel="stylesheet">
 
     <!-- Custom Styles -->
     <style>
+        /* ── Utility layer (replaces the Tailwind CDN compiler: no runtime JS,
+              no flash of unstyled layout, ~2KB instead of ~300KB) ────── */
+        *, ::before, ::after { box-sizing: border-box; border: 0 solid #27272a; }
+        html { -webkit-text-size-adjust: 100%; }
+        body { margin: 0; }
+        button { font-family: inherit; font-size: 100%; line-height: inherit; color: inherit; background: none; padding: 0; }
+        button:not(:disabled) { cursor: pointer; }
+        img, svg, iframe { display: block; vertical-align: middle; }
+        input, textarea { font-family: inherit; font-size: 100%; line-height: inherit; color: inherit; margin: 0; }
+        h1, h2, h3, p { margin: 0; }
+        a { color: inherit; text-decoration: none; }
+
+        .fixed { position: fixed; } .absolute { position: absolute; } .relative { position: relative; }
+        .inset-0 { top: 0; right: 0; bottom: 0; left: 0; } .top-0 { top: 0; }
+        .z-10 { z-index: 10; } .z-20 { z-index: 20; } .z-50 { z-index: 50; } .z-\[60\] { z-index: 60; } .z-\[70\] { z-index: 70; } .z-\[80\] { z-index: 80; }
+        .flex { display: flex; } .inline-flex { display: inline-flex; } .inline-block { display: inline-block; } .grid { display: grid; } .hidden { display: none; }
+        .flex-col { flex-direction: column; } .flex-wrap { flex-wrap: wrap; } .flex-1 { flex: 1 1 0%; } .shrink-0 { flex-shrink: 0; }
+        .items-center { align-items: center; } .items-start { align-items: flex-start; }
+        .justify-center { justify-content: center; } .justify-between { justify-content: space-between; } .justify-end { justify-content: flex-end; }
+        .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .col-span-full { grid-column: 1 / -1; }
+        .gap-1 { gap: 0.25rem; } .gap-1\.5 { gap: 0.375rem; } .gap-2 { gap: 0.5rem; } .gap-3 { gap: 0.75rem; }
+        .space-y-2 > * + * { margin-top: 0.5rem; } .space-y-3 > * + * { margin-top: 0.75rem; } .space-y-4 > * + * { margin-top: 1rem; } .space-y-5 > * + * { margin-top: 1.25rem; }
+        .min-h-screen { min-height: 100vh; } .min-h-\[220px\] { min-height: 220px; } .min-h-\[260px\] { min-height: 260px; }
+        .max-h-\[88vh\] { max-height: 88vh; } .max-h-96 { max-height: 24rem; }
+        .w-full { width: 100%; } .w-3\.5 { width: 0.875rem; } .w-4 { width: 1rem; } .w-8 { width: 2rem; } .w-11 { width: 2.75rem; } .w-72 { width: 18rem; }
+        .w-11\/12 { width: 91.666667%; } .w-5\/6 { width: 83.333333%; } .w-3\/4 { width: 75%; }
+        .h-3\.5 { height: 0.875rem; } .h-4 { height: 1rem; } .h-6 { height: 1.5rem; } .h-8 { height: 2rem; } .h-16 { height: 4rem; } .h-full { height: 100%; }
+        .size-3\.5 { width: 0.875rem; height: 0.875rem; } .size-4 { width: 1rem; height: 1rem; } .size-7 { width: 1.75rem; height: 1.75rem; }
+        .max-w-2xl { max-width: 42rem; } .max-w-3xl { max-width: 48rem; } .max-w-4xl { max-width: 56rem; } .max-w-xl { max-width: 36rem; } .max-w-sm { max-width: 24rem; }
+        .max-w-\[150px\] { max-width: 150px; } .max-w-\[120px\] { max-width: 120px; }
+        .aspect-\[2\/3\] { aspect-ratio: 2 / 3; } .aspect-video { aspect-ratio: 16 / 9; }
+        .object-cover { object-fit: cover; } .object-contain { object-fit: contain; }
+        .overflow-hidden { overflow: hidden; } .overflow-x-auto { overflow-x: auto; } .overflow-y-auto { overflow-y: auto; }
+        .min-w-0 { min-width: 0; } .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .whitespace-nowrap { white-space: nowrap; } .whitespace-pre-wrap { white-space: pre-wrap; }
+        .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .mx-auto { margin-left: auto; margin-right: auto; } .ml-2 { margin-left: 0.5rem; } .ml-auto { margin-left: auto; }
+        .mt-1 { margin-top: 0.25rem; } .mt-2 { margin-top: 0.5rem; } .mt-3 { margin-top: 0.75rem; } .mt-4 { margin-top: 1rem; } .mt-5 { margin-top: 1.25rem; } .mt-6 { margin-top: 1.5rem; } .mt-8 { margin-top: 2rem; } .mt-12 { margin-top: 3rem; }
+        .mb-2 { margin-bottom: 0.5rem; } .mb-6 { margin-bottom: 1.5rem; }
+        .p-1 { padding: 0.25rem; } .p-3 { padding: 0.75rem; } .p-4 { padding: 1rem; } .p-6 { padding: 1.5rem; }
+        .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; } .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; } .px-4 { padding-left: 1rem; padding-right: 1rem; } .px-5 { padding-left: 1.25rem; padding-right: 1.25rem; }
+        .py-0\.5 { padding-top: 0.125rem; padding-bottom: 0.125rem; } .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; } .py-1\.5 { padding-top: 0.375rem; padding-bottom: 0.375rem; } .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; } .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; } .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+        .pl-2 { padding-left: 0.5rem; } .pr-2 { padding-right: 0.5rem; } .pr-4 { padding-right: 1rem; }
+        .pb-3 { padding-bottom: 0.75rem; } .pb-4 { padding-bottom: 1rem; } .pb-5 { padding-bottom: 1.25rem; }
+        .pt-3 { padding-top: 0.75rem; } .pt-4 { padding-top: 1rem; } .pt-5 { padding-top: 1.25rem; } .pt-6 { padding-top: 1.5rem; }
+        .text-left { text-align: left; } .text-center { text-align: center; } .text-right { text-align: right; }
+        .font-sans { font-family: Inter, 'PT Sans', system-ui, sans-serif; }
+        .font-medium { font-weight: 500; } .font-semibold { font-weight: 600; } .font-bold { font-weight: 700; } .font-black { font-weight: 900; }
+        .text-\[10px\] { font-size: 10px; } .text-\[11px\] { font-size: 11px; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; } .text-sm { font-size: 0.875rem; line-height: 1.25rem; } .text-base { font-size: 1rem; line-height: 1.5rem; } .text-lg { font-size: 1.125rem; line-height: 1.75rem; } .text-xl { font-size: 1.25rem; line-height: 1.75rem; } .text-5xl { font-size: 3rem; line-height: 1; }
+        .leading-5 { line-height: 1.25rem; } .leading-6 { line-height: 1.5rem; } .leading-tight { line-height: 1.25; }
+        .tracking-tight { letter-spacing: -0.025em; } .tracking-wide { letter-spacing: 0.025em; }
+        .uppercase { text-transform: uppercase; }
+        .antialiased { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        .text-white { color: #fff; } .text-black { color: #000; } .text-transparent { color: transparent; }
+        .text-neutral-200 { color: #e5e5e5; } .text-neutral-300 { color: #d4d4d4; } .text-neutral-400 { color: #a3a3a3; } .text-neutral-500 { color: #737373; } .text-neutral-600 { color: #525252; }
+        .text-sky-300 { color: #7dd3fc; } .text-sky-400 { color: #38bdf8; } .text-sky-500 { color: #0ea5e9; }
+        .text-purple-400 { color: #c084fc; } .text-green-300 { color: #86efac; } .text-red-200 { color: #fecaca; } .text-red-300 { color: #fca5a5; }
+        .bg-black { background-color: #000; } .bg-white { background-color: #fff; } .bg-transparent { background-color: transparent; }
+        .bg-black\/30 { background-color: rgb(0 0 0 / 0.3); } .bg-black\/70 { background-color: rgb(0 0 0 / 0.7); } .bg-black\/80 { background-color: rgb(0 0 0 / 0.8); } .bg-black\/90 { background-color: rgb(0 0 0 / 0.9); }
+        .bg-neutral-800 { background-color: #262626; } .bg-neutral-900 { background-color: #171717; } .bg-neutral-900\/70 { background-color: rgb(23 23 23 / 0.7); } .bg-neutral-950 { background-color: #0a0a0a; }
+        .bg-zinc-900 { background-color: #18181b; } .bg-zinc-900\/70 { background-color: rgb(24 24 27 / 0.7); }
+        .bg-red-950\/30 { background-color: rgb(76 5 25 / 0.3); } .bg-red-950\/40 { background-color: rgb(76 5 25 / 0.4); }
+        .border { border-width: 1px; } .border-b { border-bottom-width: 1px; } .border-t { border-top-width: 1px; }
+        .border-neutral-700 { border-color: #404040; } .border-neutral-800 { border-color: #262626; } .border-red-900\/60 { border-color: rgb(127 29 29 / 0.6); } .border-zinc-700 { border-color: #3f3f46; }
+        .rounded { border-radius: 0.25rem; } .rounded-md { border-radius: 0.375rem; } .rounded-lg { border-radius: 0.5rem; } .rounded-xl { border-radius: 0.75rem; } .rounded-2xl { border-radius: 1rem; } .rounded-full { border-radius: 9999px; }
+        .shadow-xs { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); } .shadow-md { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); } .shadow-2xl { box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25); }
+        .ring-transparent { --tw-ring-color: transparent; }
+        .opacity-50 { opacity: 0.5; } .opacity-60 { opacity: 0.6; }
+        .backdrop-blur-sm { backdrop-filter: blur(4px); }
+        .bg-gradient-to-b { background-image: linear-gradient(to bottom, var(--tw-gradient-from, transparent), var(--tw-gradient-to, transparent)); }
+        .bg-gradient-to-r { background-image: linear-gradient(to right, var(--tw-gradient-from, transparent), var(--tw-gradient-to, transparent)); }
+        .from-white { --tw-gradient-from: #fff; } .from-sky-400 { --tw-gradient-from: #38bdf8; } .from-sky-400\/15 { --tw-gradient-from: rgb(56 189 248 / 0.15); }
+        .to-gray-400 { --tw-gradient-to: #9ca3af; } .to-purple-400 { --tw-gradient-to: #c084fc; } .to-purple-400\/15 { --tw-gradient-to: rgb(192 132 252 / 0.15); }
+        .bg-clip-text { -webkit-background-clip: text; background-clip: text; }
+        .accent-sky-500 { accent-color: #0ea5e9; }
+        .resize-none { resize: none; } .outline-none { outline: 2px solid transparent; outline-offset: 2px; }
+        .cursor-pointer { cursor: pointer; } .pointer-events-none { pointer-events: none; }
+        .transition { transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+        .transition-all { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+        .transition-colors { transition-property: color, background-color, border-color, text-decoration-color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+        .duration-300 { transition-duration: 300ms; }
+        .group:hover .group-hover\:block { display: block; }
+        .placeholder\:text-neutral-400::placeholder { color: #a3a3a3; } .placeholder\:text-neutral-600::placeholder { color: #525252; }
+        .hover\:bg-accent:hover { background-color: #262626; } .hover\:bg-neutral-200:hover { background-color: #e5e5e5; } .hover\:bg-neutral-800:hover { background-color: #262626; }
+        .hover\:bg-red-900\/40:hover { background-color: rgb(127 29 29 / 0.4); } .hover\:bg-red-950\/40:hover { background-color: rgb(76 5 25 / 0.4); }
+        .hover\:border-neutral-500:hover { border-color: #737373; } .hover\:border-zinc-500:hover { border-color: #71717a; }
+        .hover\:text-white:hover { color: #fff; } .hover\:text-red-300:hover { color: #fca5a5; } .hover\:text-sky-300:hover { color: #7dd3fc; } .hover\:text-accent-foreground:hover { color: #fff; }
+        .hover\:brightness-110:hover { filter: brightness(1.1); }
+        .focus\:border-neutral-500:focus { border-color: #737373; } .focus\:border-neutral-600:focus { border-color: #525252; }
+        .focus-within\:ring-neutral-500\/30:focus-within { box-shadow: 0 0 0 4px rgb(115 115 115 / 0.3); } .focus-within\:border-neutral-600:focus-within { border-color: #525252; }
+        .disabled\:opacity-50:disabled { opacity: 0.5; } .disabled\:pointer-events-none:disabled { pointer-events: none; }
+        .text-popover-foreground { color: #e5e5e5; }
+        .\!w-96 { width: 24rem !important; } .\!rounded-2xl { border-radius: 1rem !important; } .\!rounded-md { border-radius: 0.375rem !important; }
+        .\!bg-neutral-900 { background-color: #171717 !important; } .\!border-white\/10 { border-color: rgb(255 255 255 / 0.1) !important; }
+        .\!bg-gradient-to-r { background-image: linear-gradient(to right, var(--tw-gradient-from, transparent), var(--tw-gradient-to, transparent)) !important; }
+        .\!border-sky-500 { border-color: #0ea5e9 !important; } .\!text-sky-400 { color: #38bdf8 !important; }
+        @media (min-width: 640px) { .sm\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+        @media (min-width: 768px) { .md\:p-8 { padding: 2rem; } .md\:text-7xl { font-size: 4.5rem; line-height: 1; } }
+        @media (min-width: 1024px) { .lg\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+        .content-hidden-until-paint { content-visibility: auto; contain-intrinsic-size: auto 500px; }
         body {
             background-image: url('https://huggingface.co/deepsite/background_noisy.webp');
             font-family: 'Inter', 'PT Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
@@ -318,12 +416,20 @@
         <div class="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-5 py-3"><button class="watch-tab rounded-lg bg-neutral-800 px-3 py-2 text-xs text-white" data-type="movie">Movies</button><button class="watch-tab rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-white" data-type="tv">TV shows</button><button class="watch-tab rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-white" data-type="anime">Anime</button><button id="watchlist-tab" class="ml-auto rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-white">My watchlist</button></div>
         <div class="flex gap-2 px-5 py-4"><input id="media-search" class="min-w-0 flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-600" placeholder="Search movies, shows, or anime..." /><button id="media-search-button" class="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-neutral-200">Search</button></div>
         <div id="watcher-error" class="hidden mx-5 mb-2 rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-200"></div>
-        <div id="media-results" class="grid min-h-[260px] flex-1 grid-cols-2 gap-3 overflow-y-auto px-5 pb-5 sm:grid-cols-3 lg:grid-cols-4"></div>
+        <div id="media-results" class="grid content-hidden-until-paint min-h-[260px] flex-1 grid-cols-2 gap-3 overflow-y-auto px-5 pb-5 sm:grid-cols-3 lg:grid-cols-4"></div>
         <div id="watchlist-results" class="hidden min-h-[260px] flex-1 space-y-2 overflow-y-auto px-5 pb-5"></div>
     </div>
 </div>
 
 <div id="toast-stack"></div>
+
+<div id="trailer-modal" class="hidden fixed inset-0 z-[80] items-center justify-center bg-black/90 p-4">
+    <div class="w-full max-w-3xl">
+        <div class="mb-2 flex items-center justify-between"><h3 id="trailer-title" class="text-base font-semibold text-white"></h3><button id="close-trailer" class="text-2xl text-neutral-500 hover:text-white">×</button></div>
+        <div class="aspect-video w-full overflow-hidden rounded-xl border border-neutral-800 bg-black"><iframe id="trailer-frame" class="h-full w-full" src="" title="Trailer" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+        <p id="trailer-fallback" class="mt-3 hidden text-center text-xs text-neutral-400"></p>
+    </div>
+</div>
 
 <script>
     document.addEventListener('contextmenu', event => event.preventDefault());
@@ -394,6 +500,30 @@
         let historyVisible = true;   // header toggle for the saved-conversation log
         let sessionId = Date.now();  // new chat = new session; AI memory only spans a session
         let imageSizeIndex = 0;
+        const trailerModal = document.getElementById('trailer-modal');
+        const trailerFrame = document.getElementById('trailer-frame');
+        const trailerTitle = document.getElementById('trailer-title');
+        const trailerFallback = document.getElementById('trailer-fallback');
+        const closeTrailer = document.getElementById('close-trailer');
+        const closeTrailerModal = () => { trailerFrame.src = ''; trailerModal.classList.add('hidden'); trailerModal.classList.remove('flex'); };
+        closeTrailer.addEventListener('click', closeTrailerModal);
+        trailerModal.addEventListener('click', (event) => { if (event.target === trailerModal) closeTrailerModal(); });
+        const openTrailer = async (item) => {
+            trailerTitle.textContent = `${item.title} — trailer`;
+            trailerFallback.classList.add('hidden');
+            trailerFrame.src = '';
+            trailerModal.classList.remove('hidden');
+            trailerModal.classList.add('flex');
+            try {
+                const data = await api(`/api/media/detail?type=${encodeURIComponent(item.mediaType)}&id=${encodeURIComponent(item.externalId)}`);
+                if (data.embedUrl) { trailerFrame.src = data.embedUrl; }
+                else if (data.trailerUrl) { window.open(data.trailerUrl, '_blank', 'noopener'); closeTrailerModal(); }
+                else { trailerFallback.textContent = 'No trailer found for this title.'; trailerFallback.classList.remove('hidden'); }
+            } catch (error) {
+                trailerFallback.textContent = error.message;
+                trailerFallback.classList.remove('hidden');
+            }
+        };
 
         // ── Toasts ────────────────────────────────────────────────────
         const toastColors = {
@@ -461,9 +591,23 @@
         const setWatcherError = (message = '') => { watcherError.textContent = message; watcherError.classList.toggle('hidden', !message); };
         const watchLink = (item) => item.mediaType === 'anime' ? `https://www.crunchyroll.com/search?q=${encodeURIComponent(item.title)}` : `https://www.justwatch.com/us/search?q=${encodeURIComponent(item.title)}`;
         const renderMediaResults = (results) => {
-            mediaResults.innerHTML = results.length ? results.map((item) => `<article class="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900"><div class="aspect-[2/3] bg-neutral-900">${item.posterUrl ? `<img src="${escapeHtml(item.posterUrl)}" alt="${escapeHtml(item.title)} poster" class="h-full w-full object-cover" loading="lazy" />` : '<div class="flex h-full items-center justify-center px-3 text-center text-xs text-neutral-600">No poster available</div>'}</div><div class="p-3"><h3 class="truncate text-sm font-semibold text-white" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</h3><div class="mt-1 flex items-center justify-between text-[10px] text-neutral-500"><span>${escapeHtml(item.year || 'Release date unknown')}</span><span>${item.score ? `★ ${Number(item.score).toFixed(1)}` : ''}</span></div><p class="mt-2 line-clamp-3 text-[11px] leading-5 text-neutral-400">${escapeHtml(item.overview || 'No synopsis available.')}</p><div class="mt-3 flex gap-2"><button class="watchlist-add flex-1 rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-300 hover:border-neutral-500 hover:text-white" data-item="${encodeURIComponent(JSON.stringify(item))}">＋ Watchlist</button><a href="${watchLink(item)}" target="_blank" rel="noopener noreferrer" class="rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-400 hover:border-neutral-500 hover:text-white" title="Find where to watch">▶</a></div></div></article>`).join('') : '<div class="col-span-full flex min-h-[220px] items-center justify-center text-sm text-neutral-500">No results found. Try another search.</div>';
+            mediaResults.innerHTML = results.length ? results.map((item) => `<article class="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900"><div class="aspect-[2/3] bg-neutral-900">${item.posterUrl ? `<img src="${escapeHtml(item.posterUrl)}" alt="${escapeHtml(item.title)} poster" class="h-full w-full object-cover" loading="lazy" />` : '<div class="flex h-full items-center justify-center px-3 text-center text-xs text-neutral-600">No poster available</div>'}</div><div class="p-3"><h3 class="truncate text-sm font-semibold text-white" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</h3><div class="mt-1 flex items-center justify-between text-[10px] text-neutral-500"><span>${escapeHtml(item.year || 'Release date unknown')}</span><span>${item.score ? `★ ${Number(item.score).toFixed(1)}` : ''}</span></div><p class="mt-2 line-clamp-3 text-[11px] leading-5 text-neutral-400">${escapeHtml(item.overview || 'No synopsis available.')}</p><div class="mt-3 flex gap-2"><button class="trailer-play rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-300 hover:border-neutral-500 hover:text-white" data-item="${encodeURIComponent(JSON.stringify(item))}" title="Play trailer">▶ Trailer</button><button class="watchlist-add rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-300 hover:border-neutral-500 hover:text-white" data-item="${encodeURIComponent(JSON.stringify(item))}">＋</button></div></div></article>`).join('') : '<div class="col-span-full flex min-h-[220px] items-center justify-center text-sm text-neutral-500">No results found. Try another search.</div>';
         };
         const renderWatchlist = (items) => { watchlistResults.innerHTML = items.length ? items.map((item) => `<div class="flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900 p-3"><div class="h-16 w-11 shrink-0 overflow-hidden rounded bg-neutral-800">${item.posterUrl ? `<img src="${escapeHtml(item.posterUrl)}" alt="" class="h-full w-full object-cover" />` : ''}</div><div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold text-white">${escapeHtml(item.title)}</div><div class="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">${escapeHtml(item.mediaType)} · <button class="watch-status uppercase rounded px-1 py-0.5 transition hover:text-white ${item.status === 'completed' ? 'text-green-300' : item.status === 'watching' ? 'text-sky-300' : item.status === 'dropped' ? 'text-red-300' : 'text-neutral-400'}" data-id="${item.id}" data-status="${escapeHtml(item.status)}" title="Click to change status">${escapeHtml(item.status)}</button></div><div class="mt-2 flex items-center gap-2"><input class="watch-progress w-full accent-sky-500" type="range" min="0" max="100" value="${item.progress}" data-id="${item.id}" /><span class="w-8 text-right text-[10px] text-neutral-500">${item.progress}%</span></div><a href="${watchLink(item)}" target="_blank" rel="noopener noreferrer" class="mt-1 inline-block text-[10px] text-sky-400 hover:text-sky-300">Find where to watch ↗</a></div><button class="watchlist-remove px-2 text-lg text-neutral-600 hover:text-red-300" data-id="${item.id}" title="Remove">×</button></div>`).join('') : '<div class="flex min-h-[220px] items-center justify-center text-sm text-neutral-500">Your watchlist is empty.</div>'; };
+        // Live model picker from /api/models (curated + free models OpenRouter serves).
+        const loadModels = async () => {
+            try {
+                const data = await api('/api/models');
+                if (!Array.isArray(data.models) || !data.models.length) return;
+                const stillListed = data.models.some((m) => m.id === selectedModel);
+                modelList.innerHTML = data.models.map((m) => `<button class="model-option text-left p-2 hover:bg-neutral-800 rounded-md ${m.id === selectedModel ? 'bg-neutral-800' : ''}" data-model="${escapeHtml(m.id)}" data-name="${escapeHtml(m.name)}" title="${m.context ? `Context: ${Math.round(m.context / 1000)}k tokens` : m.id}">${escapeHtml(m.name)}</button>`).join('');
+                const current = data.models.find((m) => m.id === selectedModel);
+                if (current) modelNameSpan.textContent = current.name;
+                else if (!stillListed) toast('Your saved model is unavailable — pick another.', 'info');
+            } catch { /* keep the static list */ }
+        };
+        loadModels();
+
         const renderConversations = () => {
             // History button off → show only the current chat session; on → everything.
             const items = historyVisible ? conversations : conversations.filter((item) => item.sessionId === sessionId);
@@ -780,7 +924,13 @@
         mediaSearch.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadMedia(); });
         document.querySelectorAll('.watch-tab').forEach((tab) => tab.addEventListener('click', () => { mediaType = tab.dataset.type; showingWatchlist = false; document.querySelectorAll('.watch-tab').forEach((item) => item.className = item === tab ? 'watch-tab rounded-lg bg-neutral-800 px-3 py-2 text-xs text-white' : 'watch-tab rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-white'); watchlistResults.classList.add('hidden'); mediaResults.classList.remove('hidden'); loadMedia(); }));
         watchlistTab.addEventListener('click', () => { showingWatchlist = true; mediaResults.classList.add('hidden'); watchlistResults.classList.remove('hidden'); loadWatchlist(); });
-        mediaResults.addEventListener('click', async (event) => { const button = event.target.closest('.watchlist-add'); if (!button) return; try { const item = JSON.parse(decodeURIComponent(button.dataset.item)); await api('/api/watchlist', { method: 'POST', body: JSON.stringify(item) }); button.textContent = '✓ Added'; button.disabled = true; toast('Added to watchlist.', 'success'); } catch (error) { setWatcherError(error.message); } });
+        mediaResults.addEventListener('click', async (event) => {
+            const addBtn = event.target.closest('.watchlist-add');
+            const trailerBtn = event.target.closest('.trailer-play');
+            if (trailerBtn) { try { await openTrailer(JSON.parse(decodeURIComponent(trailerBtn.dataset.item))); } catch (error) { setWatcherError(error.message); } return; }
+            if (!addBtn) return;
+            try { const item = JSON.parse(decodeURIComponent(addBtn.dataset.item)); await api('/api/watchlist', { method: 'POST', body: JSON.stringify(item) }); addBtn.textContent = '✓'; addBtn.disabled = true; toast('Added to watchlist.', 'success'); } catch (error) { setWatcherError(error.message); }
+        });
         watchlistResults.addEventListener('input', async (event) => { const slider = event.target.closest('.watch-progress'); if (!slider) return; try { await api(`/api/watchlist/${encodeURIComponent(slider.dataset.id)}`, { method: 'PATCH', body: JSON.stringify({ progress: Number(slider.value) }) }); slider.nextElementSibling.textContent = `${slider.value}%`; } catch (error) { setWatcherError(error.message); } });
         watchlistResults.addEventListener('click', async (event) => {
             const removeBtn = event.target.closest('.watchlist-remove');
