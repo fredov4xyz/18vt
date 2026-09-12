@@ -2,40 +2,102 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "functions": {
-    "api/index.js": { "memory": 1024, "maxDuration": 60 },
-    "api/health.js": { "memory": 1024, "maxDuration": 60 },
-    "api/models.js": { "memory": 1024, "maxDuration": 60 },
-    "api/chat.js": { "memory": 1024, "maxDuration": 60 },
-    "api/conversations.js": { "memory": 1024, "maxDuration": 60 },
-    "api/watchlist.js": { "memory": 1024, "maxDuration": 60 },
-    "api/generate-image.js": { "memory": 1024, "maxDuration": 60 },
-    "api/auth/signup.js": { "memory": 1024, "maxDuration": 60 },
-    "api/auth/signin.js": { "memory": 1024, "maxDuration": 60 },
-    "api/auth/signout.js": { "memory": 1024, "maxDuration": 60 },
-    "api/auth/me.js": { "memory": 1024, "maxDuration": 60 },
-    "api/media/search.js": { "memory": 1024, "maxDuration": 60 },
-    "api/media/detail.js": { "memory": 1024, "maxDuration": 60 }
+    "api/index.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/models.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/chat.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/conversations.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/watchlist.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/generate-image.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/auth/signup.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/auth/signin.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/auth/signout.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/auth/me.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/media/search.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/media/detail.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
   },
   "rewrites": [
-    { "source": "/", "destination": "/indev.html" },
-    { "source": "/api/conversations/:id", "destination": "/api/conversations?id=:id" },
-    { "source": "/api/watchlist/:id", "destination": "/api/watchlist?id=:id" },
-    { "source": "/api/:path*", "destination": "/api/index" }
+    {
+      "source": "/",
+      "destination": "/indev.html"
+    },
+    {
+      "source": "/api/conversations/:id",
+      "destination": "/api/conversations?id=:id"
+    },
+    {
+      "source": "/api/watchlist/:id",
+      "destination": "/api/watchlist?id=:id"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index"
+    }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
       ]
     },
     {
       "source": "/indev.html",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
       ]
     }
   ]
