@@ -98,7 +98,10 @@ const supabase = async (endpoint, options = {}, accessToken = '') => {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        throw new Error(data.msg || data.error_description || data.message || data.error || `Supabase request failed (${response.status})`);
+        const error = new Error(data.msg || data.error_description || data.message || data.error || `Supabase request failed (${response.status})`);
+        error.status = response.status;
+        error.code = data.code || data.error_code || '';
+        throw error;
     }
     return data;
 };
@@ -221,7 +224,7 @@ module.exports = async (req, res) => {
             return json(res, 200, {
                 status: missing.length === 0 ? 'ok' : 'degraded',
                 service: '18vt',
-                version: '1.4.0',
+                version: '1.4.1',
                 uptimeSeconds: Math.round(process.uptime()),
                 env,
                 missing,
@@ -270,7 +273,19 @@ module.exports = async (req, res) => {
                 if (name.length < 2) return json(res, 400, { error: 'Enter a name.' });
                 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: 'Enter a valid email.' });
                 if (password.length < 8) return json(res, 400, { error: 'Password must be 8+ characters.' });
-                const session = await supabase('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email, password, data: { name } }) });
+                let session;
+                try {
+                    session = await supabase('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email, password, data: { name } }) });
+                } catch (error) {
+                    const msg = String(error.message || '');
+                    if (error.status === 429 || error.code === 'over_email_send_rate_limit' || /rate limit/i.test(msg)) {
+                        return json(res, 429, { error: 'The email service is at its hourly limit. Wait a little and try again — or sign in if this account already exists.' }, { 'Retry-After': '600' });
+                    }
+                    if (/already registered|already exists/i.test(msg)) {
+                        return json(res, 400, { error: 'This email is already registered — try signing in instead.' });
+                    }
+                    throw error;
+                }
                 if (!session.user) return json(res, 200, { needsEmailConfirmation: true, message: 'Account created! Check your email to confirm, then sign in.' });
                 return json(res, 201, { user: { id: session.user.id, email: session.user.email, name, createdAt: session.user.created_at } }, { 'Set-Cookie': setAuthCookies(session) });
             }
