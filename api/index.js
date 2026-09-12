@@ -208,7 +208,7 @@ module.exports = async (req, res) => {
                 };
                 const notConfigured = () => ({ ok: false, status: 0, ms: 0, error: 'not configured' });
                 const [supabaseCheck, openrouterCheck, tmdbCheck, jikanCheck] = await Promise.all([
-                    SUPABASE_URL ? probe('supabase', `${SUPABASE_URL}/auth/v1/health`) : Promise.resolve(notConfigured()),
+                    SUPABASE_URL ? probe('supabase', `${SUPABASE_URL}/auth/v1/health`, { apikey: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '' }) : Promise.resolve(notConfigured()),
                     OPENROUTER_API_KEY ? probe('openrouter', 'https://openrouter.ai/api/v1/auth/key', { Authorization: `Bearer ${OPENROUTER_API_KEY}` }) : Promise.resolve(notConfigured()),
                     TMDB_API_KEY ? probe('tmdb', `https://api.themoviedb.org/3/configuration?api_key=${encodeURIComponent(TMDB_API_KEY)}`) : Promise.resolve(notConfigured()),
                     probe('jikan', 'https://api.jikan.moe/v4/anime?q=test&limit=1')
