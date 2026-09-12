@@ -190,6 +190,8 @@ module.exports = async (req, res) => {
             return json(res, 200, {
                 status: missing.length === 0 ? 'ok' : 'degraded',
                 service: '18vt',
+                version: '1.1.0',
+                models: ['meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-2.0-flash-exp:free', 'deepseek/deepseek-chat-v3-0324:free', 'qwen/qwen3-30b-a3b:free'],
                 uptimeSeconds: Math.round(process.uptime()),
                 env,
                 missing,
@@ -260,6 +262,9 @@ module.exports = async (req, res) => {
                 res.setHeader('Connection', 'keep-alive');
                 let closed = false;
                 req.on('close', () => { closed = true; });
+                // Keepalive comments so proxies keep the stream open while the model thinks.
+                const pings = setInterval(() => { if (!closed) res.write(': ping\n\n'); }, 15_000);
+                const finishStream = () => { clearInterval(pings); res.end(); };
 
                 const models = [requestedModel, ...FALLBACK_CHAIN.filter((m) => m !== requestedModel)];
                 let upstream = null;
@@ -283,14 +288,14 @@ module.exports = async (req, res) => {
                     } catch (error) {
                         if (error.fatal) {
                             res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
-                            return res.end();
+                            return finishStream();
                         }
                         upstream = null;
                     }
                 }
                 if (!upstream) {
                     res.write(`event: error\ndata: ${JSON.stringify({ error: 'All AI models are busy right now. Try again shortly.' })}\n\n`);
-                    return res.end();
+                    return finishStream();
                 }
 
                 const reader = upstream.body.getReader();
@@ -306,7 +311,7 @@ module.exports = async (req, res) => {
                         const trimmed = line.trim();
                         if (!trimmed.startsWith('data:')) continue;
                         const payload = trimmed.slice(5).trim();
-                        if (payload === '[DONE]') { res.write('event: done\ndata: {}\n\n'); return res.end(); }
+                        if (payload === '[DONE]') { res.write('event: done\ndata: {}\n\n'); return finishStream(); }
                         try {
                             const parsed = JSON.parse(payload);
                             const delta = parsed.choices?.[0]?.delta?.content || '';
@@ -317,7 +322,7 @@ module.exports = async (req, res) => {
                         } catch {}
                     }
                 }
-                return res.end();
+                return finishStream();
             }
 
             // Non-streaming with automatic model fallback.
@@ -389,7 +394,8 @@ module.exports = async (req, res) => {
 
             if (method === 'POST') {
                 const input = await body(req);
-                const item = { user_id: auth.user.id, media_type: String(input.mediaType || 'movie'), external_id: String(input.externalId || ''), title: String(input.title || '').slice(0, 200), poster_url: String(input.posterUrl || '').slice(0, 500), year: String(input.year || ''), progress: 0, status: 'planned', created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+                const status = ['planned', 'watching', 'completed', 'dropped'].includes(String(input.status)) ? String(input.status) : 'planned';
+                const item = { user_id: auth.user.id, media_type: String(input.mediaType || 'movie'), external_id: String(input.externalId || ''), title: String(input.title || '').slice(0, 200), poster_url: String(input.posterUrl || '').slice(0, 500), year: String(input.year || ''), progress: 0, status, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
                 const result = await rest('watchlist', '', { method: 'POST', body: JSON.stringify(item) }, auth.accessToken);
                 return json(res, 201, { item: mapWatch(result[0]) });
             }
@@ -429,7 +435,9 @@ module.exports = async (req, res) => {
             const input = await body(req);
             const prompt = String(input.prompt || '').slice(0, 500);
             if (!prompt.trim()) return json(res, 400, { error: 'Describe the image you want.' });
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true&seed=${Math.floor(Math.random() * 1e9)}`;
+            const width = Math.min(1280, Math.max(256, Math.round(Number(input.width) || 1024)));
+            const height = Math.min(1280, Math.max(256, Math.round(Number(input.height) || 1024)));
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&nologo=true&seed=${Math.floor(Math.random() * 1e9)}`;
             return json(res, 200, { imageUrl });
         }
 

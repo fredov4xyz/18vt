@@ -32,8 +32,13 @@ After deploying, test:
 - **Open `https://your-app.vercel.app/api/health` first.** It returns which environment variables are configured (booleans only, never values) and lists anything missing. The app also shows a banner automatically if anything is missing.
 - Sign up, sign out, and sign in again.
 - Send an AI prompt — replies stream in live (toggleable in the settings menu) with a stop button, automatic model fallback when one is busy, and markdown rendering.
+- **Send a follow-up message** — the AI remembers the current chat (last 10 exchanges), so you can ask "now explain it simpler."
+- **＋ New chat** (or `Ctrl+K`) starts a fresh session; **History** toggles between the current chat and all past conversations.
+- Copy any code block from a reply with the hover **⧉ Copy** button.
+- Press **✦ Image** twice quickly to cycle square → landscape → portrait output.
 - Copy or delete any exchange, or clear all conversations from the settings menu.
 - Open Watch, search anime, and add a title to your watchlist.
+- **Click a watchlist status** (planned → watching → completed → dropped) to change it.
 - Move the progress slider and reload the page.
 
 ## API overview
@@ -48,8 +53,8 @@ After deploying, test:
 | `DELETE /api/conversations/:id` | Delete one exchange |
 | `GET /api/media/search` | Cached upstream (Jikan/TMDB), rate-limited |
 | `GET|POST /api/watchlist`, `PATCH|DELETE /api/watchlist/:id` | Auth required |
-| `POST /api/chat` | Streaming (SSE) with model fallback, or JSON; rate-limited |
-| `POST /api/generate-image` | Pollinations, rate-limited |
+| `POST /api/chat` | Streaming (SSE) with keepalives, model fallback, multi-turn history; rate-limited |
+| `POST /api/generate-image` | Pollinations, optional `width`/`height` (256–1280); rate-limited |
 
 Wrong HTTP methods return `405` with an `Allow` header; unknown routes return `404` with a hint to check `/api/health`.
 
