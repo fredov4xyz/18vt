@@ -173,7 +173,14 @@ module.exports = async (req, res) => {
 
     const url = new URL(req.url, `https://${req.headers.host || '18vt.vercel.app'}`);
     // Vercel's catch-all routes /api/<anything> here. Strip the /api prefix and trailing slash.
-    const route = (url.pathname.replace(/^\/api/, '') || '/').replace(/\/+$/, '') || '/';
+    let route = (url.pathname.replace(/^\/api/, '') || '/').replace(/\/+$/, '') || '/';
+    // Rewrite shim: /api/watchlist/:id and /api/conversations/:id may arrive with the
+    // original path intact or as the collection path with ?id= — normalize both.
+    const collectionMatch = route.match(/^\/(conversations|watchlist)\/([^/]+)$/);
+    if (collectionMatch) {
+        url.searchParams.set('id', collectionMatch[2]);
+        route = `/${collectionMatch[1]}`;
+    }
     const method = req.method === 'HEAD' ? 'GET' : req.method;
     console.log(`\n[${requestId}] ${method} ${route}`);
 
@@ -384,6 +391,8 @@ module.exports = async (req, res) => {
         if (route === '/conversations') {
             const auth = await requireUser(req, res);
             if (!auth) return;
+            // Id arrives via ?id= (rewrite for /api/conversations/:id) or as the path tail.
+            const id = url.searchParams.get('id') || route.split('/')[2] || '';
 
             if (method === 'GET') {
                 const rows = await rest('conversations', `?select=*&user_id=eq.${encodeURIComponent(auth.user.id)}&order=created_at.desc`, {}, auth.accessToken);
@@ -397,22 +406,18 @@ module.exports = async (req, res) => {
                 return json(res, 201, { conversation: mapConversation(result[0]) });
             }
 
+            if (method === 'DELETE' && id) {
+                const result = await rest('conversations', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken);
+                if (!Array.isArray(result) || result.length === 0) return json(res, 404, { error: 'Conversation not found.' });
+                return json(res, 200, { ok: true });
+            }
+
             if (method === 'DELETE') {
                 await rest('conversations', `?user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken);
                 return json(res, 200, { ok: true });
             }
 
             return json(res, 405, { error: `Method ${method} not allowed for ${route}` }, { Allow: 'GET, POST, DELETE' });
-        }
-
-        if (route.startsWith('/conversations/')) {
-            if (method !== 'DELETE') return json(res, 405, { error: 'Use DELETE for /api/conversations/:id' }, { Allow: 'DELETE' });
-            const auth = await requireUser(req, res);
-            if (!auth) return;
-            const id = route.split('/').pop();
-            const result = await rest('conversations', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken);
-            if (!Array.isArray(result) || result.length === 0) return json(res, 404, { error: 'Conversation not found.' });
-            return json(res, 200, { ok: true });
         }
 
         // ── Media ──────────────────────────────────────────────────────
@@ -470,6 +475,8 @@ module.exports = async (req, res) => {
         if (route === '/watchlist') {
             const auth = await requireUser(req, res);
             if (!auth) return;
+            // Id arrives via ?id= (rewrite for /api/watchlist/:id) or as the path tail.
+            const id = url.searchParams.get('id') || route.split('/')[2] || '';
 
             if (method === 'GET') {
                 const rows = await rest('watchlist', `?select=*&user_id=eq.${encodeURIComponent(auth.user.id)}&order=created_at.desc`, {}, auth.accessToken);
@@ -482,30 +489,19 @@ module.exports = async (req, res) => {
                 const item = { user_id: auth.user.id, media_type: String(input.mediaType || 'movie'), external_id: String(input.externalId || ''), title: String(input.title || '').slice(0, 200), poster_url: String(input.posterUrl || '').slice(0, 500), year: String(input.year || ''), progress: 0, status, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
                 const result = await rest('watchlist', '', { method: 'POST', body: JSON.stringify(item) }, auth.accessToken);
                 return json(res, 201, { item: mapWatch(result[0]) });
-            }
-
-            return json(res, 405, { error: `Method ${method} not allowed for ${route}` }, { Allow: 'GET, POST' });
-        }
-
-        if (route.startsWith('/watchlist/')) {
-            const auth = await requireUser(req, res);
-            if (!auth) return;
-            const id = route.split('/').pop();
-
-            if (method === 'PATCH') {
-                const input = await body(req);
-                const progress = Math.max(0, Math.min(100, Number(input.progress) || 0));
-                const update = { progress, updated_at: new Date().toISOString(), ...(input.status && { status: String(input.status).slice(0, 40) }) };
-                const result = await rest('watchlist', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'PATCH', body: JSON.stringify(update) }, auth.accessToken);
-                return json(res, 200, { item: mapWatch(result[0]) });
-            }
-
-            if (method === 'DELETE') {
+            }            if ((method === 'PATCH' || method === 'DELETE') && id) {
+                if (method === 'PATCH') {
+                    const input = await body(req);
+                    const progress = Math.max(0, Math.min(100, Number(input.progress) || 0));
+                    const update = { progress, updated_at: new Date().toISOString(), ...(input.status && { status: String(input.status).slice(0, 40) }) };
+                    const result = await rest('watchlist', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'PATCH', body: JSON.stringify(update) }, auth.accessToken);
+                    return json(res, 200, { item: mapWatch(result[0]) });
+                }
                 await rest('watchlist', `?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(auth.user.id)}`, { method: 'DELETE' }, auth.accessToken);
                 return json(res, 200, { ok: true });
             }
 
-            return json(res, 405, { error: `Method ${method} not allowed for ${route}` }, { Allow: 'PATCH, DELETE' });
+            return json(res, 405, { error: `Method ${method} not allowed for ${route}` }, { Allow: 'GET, POST, PATCH, DELETE' });
         }
 
         // ── Image generation ───────────────────────────────────────────
