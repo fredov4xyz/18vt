@@ -62,4 +62,6 @@ After deploying, test:
 
 Wrong HTTP methods return `405` with an `Allow` header; unknown routes return `404` with a hint to check `/api/health`.
 
+**Deployment note:** each `api/*.js` file is a separate serverless entry (thin re-exports of `api/index.js`). The Hobby plan allows a maximum of **12 functions per deployment** — there are exactly 12, so do not add new files under `api/` without removing one (unknown paths still reach the handler via the `/api/:path*` rewrite). `engines.node` must stay `24.x`: Node 20 is deprecated on Vercel and hard-fails function builds.
+
 Anime search uses Jikan without a key. Movie and TV search uses TMDB when `TMDB_API_KEY` is present. Image generation uses the free Pollinations image endpoint. The frontend ships a hand-rolled utility stylesheet instead of a CSS framework CDN — no runtime compiler, no layout flash.
