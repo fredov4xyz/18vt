@@ -697,12 +697,15 @@
                 imageFileInput.value = '';
             }
         };        const IMAGE_SIZES = [[1024, 1024, 'square'], [1216, 832, 'landscape'], [832, 1216, 'portrait']];
-        imageGenBtn.title = 'Generate an image — click a second time to cycle square → landscape → portrait';
-        const generateImage = async (cycle = false) => {
-            if (cycle) { imageSizeIndex = (imageSizeIndex + 1) % IMAGE_SIZES.length; toast(`Image shape: ${IMAGE_SIZES[imageSizeIndex][2]}.`, 'info'); return; }
+        imageGenBtn.title = 'Generate an image — click with an empty box to change the shape (square → landscape → portrait)';
+        const generateImage = async () => {
             const prompt = textarea.value.trim();
-
-            if (!prompt || isLoading) { if (!prompt) toast('Describe the image you want to create first.', 'info'); return; }
+            if (!prompt) {
+                imageSizeIndex = (imageSizeIndex + 1) % IMAGE_SIZES.length;
+                toast(`Image shape: ${IMAGE_SIZES[imageSizeIndex][2]}. Type a prompt, then click ✦ Image.`, 'info');
+                return;
+            }
+            if (isLoading) return;
             setLoadingState(true);
             try {
                 if (!currentUser) { setLoadingState(false); setAuthMode('signup'); authModal.classList.remove('hidden'); authModal.classList.add('flex'); return; }
@@ -718,8 +721,7 @@
                 autoResizeTextarea();
             }
         };
-        imageGenBtn.addEventListener('click', () => generateImage(true));
-        imageGenBtn.addEventListener('dblclick', () => generateImage(false));
+        imageGenBtn.addEventListener('click', generateImage);
 
         // Build OpenRouter-style history from the visible session so the AI remembers this chat.
         const buildHistory = () => conversations
