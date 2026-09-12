@@ -3,7 +3,7 @@
 ## 1. Supabase
 
 1. Create a Supabase project.
-2. Open **SQL Editor** and run all of `supabase-schema.sql`.
+2. Open **SQL Editor** and run **all** of `supabase-schema.sql` (re-run it after pulling updates — every statement is idempotent, so it safely adds new tables like `manga_progress`).
 3. In **Authentication → URL Configuration**, add your Vercel URL to the allowed redirect/site URLs.
 4. Copy the project URL and publishable key from **Project Settings → API**.
 
@@ -56,6 +56,7 @@ After deploying, test:
 | `DELETE /api/conversations/:id` | Delete one exchange (404 if not yours) |
 | `GET /api/media/search` | Cached upstream (Jikan/TMDB), rate-limited |
 | `GET /api/manga/search` / `chapters` / `pages` | MangaDex reader: covers, chapter lists, page images; auth required |
+| `GET|POST|DELETE /api/manga/progress` | Continue-reading sync: last chapter per title, upsert, clear one/all; auth required |
 | `GET /api/games` | FreeToGame catalog with `?q=`, `?genre=`, `?platform=` filters |
 | `GET /api/media/detail` | Trailer + genres + **where-to-watch providers** (10 regions); auth required |
 | `GET|POST /api/watchlist`, `PATCH|DELETE /api/watchlist/:id` | Auth required |

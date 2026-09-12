@@ -128,6 +128,7 @@ const rest = async (table, query, options, token) => supabase(`/rest/v1/${table}
 
 const mapConversation = (item) => ({ id: item.id, prompt: item.prompt, reply: item.reply, fileName: item.file_name || '', modelName: item.model_name || '18vt AI', imageUrl: item.image_url || '', createdAt: item.created_at });
 const mapWatch = (item) => ({ id: item.id, mediaType: item.media_type, externalId: item.external_id, title: item.title, posterUrl: item.poster_url || '', year: item.year || '', progress: item.progress || 0, status: item.status || 'planned', createdAt: item.created_at, updatedAt: item.updated_at });
+const mapMangaProgress = (item) => ({ id: item.id, mangaId: item.manga_id, title: item.title, coverUrl: item.cover_url || '', chapterId: item.chapter_id || '', chapterLabel: item.chapter_label || '', updatedAt: item.updated_at });
 const normalizeJikan = (item) => ({ externalId: String(item.mal_id), mediaType: 'anime', title: item.title, posterUrl: item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || '', year: String(item.aired?.prop?.from?.year || ''), score: item.score || '', overview: item.synopsis || '' });
 const normalizeTmdb = (item, type) => ({ externalId: String(item.id), mediaType: type, title: item.title || item.name, posterUrl: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : '', year: String(item.release_date?.split('-')[0] || item.first_air_date?.split('-')[0] || ''), score: item.vote_average ? Number(item.vote_average).toFixed(1) : '', overview: item.overview || '' });
 
@@ -220,7 +221,7 @@ module.exports = async (req, res) => {
             return json(res, 200, {
                 status: missing.length === 0 ? 'ok' : 'degraded',
                 service: '18vt',
-                version: '1.3.0',
+                version: '1.4.0',
                 uptimeSeconds: Math.round(process.uptime()),
                 env,
                 missing,
@@ -575,6 +576,45 @@ module.exports = async (req, res) => {
                 pages: (data.chapter.data || []).map((file) => `${base}/data/${hash}/${file}`),
                 pagesSaver: (data.chapter.dataSaver || []).map((file) => `${base}/data-saver/${hash}/${file}`)
             });
+        }
+
+        // ── Read: reading progress (Continue Reading) ──────────────────
+        if (route === '/manga/progress') {
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+
+            if (method === 'GET') {
+                const rows = await rest('manga_progress', `?select=*&user_id=eq.${encodeURIComponent(auth.user.id)}&order=updated_at.desc&limit=12`, {}, auth.accessToken);
+                return json(res, 200, { items: (Array.isArray(rows) ? rows : []).map(mapMangaProgress) });
+            }
+
+            if (method === 'POST') {
+                const input = await body(req);
+                const mangaId = String(input.mangaId || '').slice(0, 60);
+                if (!mangaId) return json(res, 400, { error: 'Missing manga id.' });
+                const row = {
+                    user_id: auth.user.id,
+                    manga_id: mangaId,
+                    title: String(input.title || '').slice(0, 200),
+                    cover_url: String(input.coverUrl || '').slice(0, 500),
+                    chapter_id: String(input.chapterId || '').slice(0, 60),
+                    chapter_label: String(input.chapterLabel || '').slice(0, 120),
+                    updated_at: new Date().toISOString()
+                };
+                // Upsert on (user_id, manga_id); needs the resolve=merge-duplicates Prefer header.
+                const result = await rest('manga_progress', '', { method: 'POST', body: JSON.stringify(row), headers: { Prefer: 'resolution=merge-duplicates,return=representation' } }, auth.accessToken);
+                if (!Array.isArray(result) || !result[0]) return json(res, 502, { error: 'Could not save reading progress.' });
+                return json(res, 200, { item: mapMangaProgress(result[0]) });
+            }
+
+            if (method === 'DELETE') {
+                const mangaId = String(url.searchParams.get('mangaId') || '').slice(0, 60);
+                const query = mangaId ? `?user_id=eq.${encodeURIComponent(auth.user.id)}&manga_id=eq.${encodeURIComponent(mangaId)}` : `?user_id=eq.${encodeURIComponent(auth.user.id)}`;
+                await rest('manga_progress', query, { method: 'DELETE' }, auth.accessToken);
+                return json(res, 200, { ok: true });
+            }
+
+            return json(res, 405, { error: `Method ${method} not allowed for ${route}` }, { Allow: 'GET, POST, DELETE' });
         }
 
         // ── Games (FreeToGame) ─────────────────────────────────────────
