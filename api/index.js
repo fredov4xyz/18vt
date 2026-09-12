@@ -279,14 +279,14 @@ module.exports = async (req, res) => {
                 } catch (error) {
                     const msg = String(error.message || '');
                     if (error.status === 429 || error.code === 'over_email_send_rate_limit' || /rate limit/i.test(msg)) {
-                        return json(res, 429, { error: 'The email service is at its hourly limit. Wait a little and try again — or sign in if this account already exists.' }, { 'Retry-After': '600' });
+                        return json(res, 429, { error: 'The Supabase email service is at its hourly limit. For an instant signup with no email cap, turn off Confirm email in Supabase Authentication settings.', 'hint': 'Skip email: set Authentication → Email → Confirm email to Off.', 'code': 'email_rate_limit' }, { 'Retry-After': '600' });
                     }
                     if (/already registered|already exists/i.test(msg)) {
-                        return json(res, 400, { error: 'This email is already registered — try signing in instead.' });
+                        return json(res, 400, { error: 'This email is already registered — try signing in instead.', 'hint': 'Sign in instead of signup.' });
                     }
                     throw error;
                 }
-                if (!session.user) return json(res, 200, { needsEmailConfirmation: true, message: 'Account created! Check your email to confirm, then sign in.' });
+                if (!session.user) return json(res, 200, { needsEmailConfirmation: true, message: 'Account created! Check your email to confirm, then sign in.', hint: 'Instant signup is possible when Authentication → Email → Confirm email is turned Off.' });
                 return json(res, 201, { user: { id: session.user.id, email: session.user.email, name, createdAt: session.user.created_at } }, { 'Set-Cookie': setAuthCookies(session) });
             }
 
