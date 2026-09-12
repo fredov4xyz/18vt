@@ -1,0 +1,33 @@
+# Local data — never commit
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+# Local reference files only (kept on disk, not in the repo)
+help.txt
+supabase-schema.sql
+
+# Dependencies
+node_modules/
+
+# Environment files — never commit secrets
+.env
+.env.*
+!.env.example
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+
+# Vercel local state
+.vercel
