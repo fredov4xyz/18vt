@@ -218,7 +218,7 @@ module.exports = async (req, res) => {
             return json(res, 200, {
                 status: missing.length === 0 ? 'ok' : 'degraded',
                 service: '18vt',
-                version: '1.2.0',
+                version: '1.3.0',
                 uptimeSeconds: Math.round(process.uptime()),
                 env,
                 missing,
@@ -444,18 +444,28 @@ module.exports = async (req, res) => {
                 });
             }
             if (!TMDB_API_KEY) return json(res, 501, { error: 'TMDB_API_KEY is not configured, so trailers are unavailable for movies and TV.' });
-            const data = await cachedJson(`https://api.themoviedb.org/3/${type}/${encodeURIComponent(id)}?api_key=${encodeURIComponent(TMDB_API_KEY)}&append_to_response=videos`, {}, 30 * 60_000);
+            const data = await cachedJson(`https://api.themoviedb.org/3/${type}/${encodeURIComponent(id)}?api_key=${encodeURIComponent(TMDB_API_KEY)}&append_to_response=videos,watch/providers`, {}, 30 * 60_000);
             if (data?.success === false || !data?.id) return json(res, 404, { error: 'Title not found.' });
             const videos = data.videos?.results || [];
             const trailer = videos.find((v) => v.site === 'YouTube' && v.official && v.type === 'Trailer')
                 || videos.find((v) => v.site === 'YouTube' && v.type === 'Trailer')
                 || videos.find((v) => v.site === 'YouTube');
+            const wp = data['watch/providers']?.results || {};
+            const providers = {};
+            for (const region of ['US', 'GB', 'CA', 'AU', 'DE', 'FR', 'IN', 'BR', 'JP', 'NG']) {
+                const entry = wp[region];
+                if (!entry) continue;
+                const names = [...new Set([...(entry.flatrate || []), ...(entry.rent || []), ...(entry.buy || [])].map((p) => p.provider_name))].slice(0, 6);
+                if (names.length) providers[region] = { link: entry.link || '', names };
+            }
             return json(res, 200, {
                 title: data.title || data.name,
                 trailerUrl: trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : '',
                 embedUrl: trailer ? `https://www.youtube-nocookie.com/embed/${trailer.key}?autoplay=1&rel=0` : '',
                 runtime: data.runtime || data.episode_run_time?.[0] || '',
-                genres: (data.genres || []).slice(0, 4).map((g) => g.name)
+                genres: (data.genres || []).slice(0, 4).map((g) => g.name),
+                providers,
+                justWatchUrl: providers.US?.link || providers.GB?.link || Object.values(providers)[0]?.link || ''
             });
         }
 
@@ -469,6 +479,83 @@ module.exports = async (req, res) => {
             const type = ['movie', 'tv', 'anime'].includes(url.searchParams.get('type')) ? url.searchParams.get('type') : 'movie';
             const q = String(url.searchParams.get('q') || 'popular').slice(0, 200);
             return json(res, 200, { results: await searchMedia(q, type) });
+        }
+
+        // ── Read (MangaDex) ────────────────────────────────────────────
+        if (route === '/manga/search') {
+            if (method !== 'GET') return json(res, 405, { error: 'Use GET for /api/manga/search' }, { Allow: 'GET' });
+            const limiter = rateLimit('media', clientKey(req), RATE_LIMITS.media);
+            if (!limiter.ok) return json(res, 429, { error: `Too many requests — retry in ${limiter.retryAfter}s.` }, { 'Retry-After': String(limiter.retryAfter) });
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+            const q = String(url.searchParams.get('q') || 'popular').slice(0, 120);
+            const params = q === 'popular'
+                ? 'limit=18&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&order[followedCount]=desc'
+                : `limit=18&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&title=${encodeURIComponent(q)}`;
+            const data = await cachedJson(`https://api.mangadex.org/manga?${params}`, {}, 15 * 60_000);
+            const results = (data?.data || []).map((m) => {
+                const cover = (m.relationships || []).find((r) => r.type === 'cover_art');
+                const title = m.attributes?.title?.en || Object.values(m.attributes?.title || {})[0] || 'Untitled';
+                const description = m.attributes?.description?.en || Object.values(m.attributes?.description || {})[0] || '';
+                return {
+                    id: m.id,
+                    title,
+                    coverUrl: cover ? `https://uploads.mangadex.org/covers/${m.id}/${cover.attributes?.fileName}.256.jpg` : '',
+                    year: m.attributes?.year || '',
+                    status: m.attributes?.status || '',
+                    description: String(description).replace(/<[^>]*>/g, '').slice(0, 220),
+                    tags: (m.attributes?.tags || []).slice(0, 3).map((t) => t.attributes?.name?.en).filter(Boolean)
+                };
+            });
+            return json(res, 200, { results });
+        }
+
+        if (route === '/manga/chapters') {
+            if (method !== 'GET') return json(res, 405, { error: 'Use GET for /api/manga/chapters' }, { Allow: 'GET' });
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+            const id = String(url.searchParams.get('id') || '').slice(0, 40);
+            if (!id) return json(res, 400, { error: 'Missing manga id.' });
+            const data = await cachedJson(`https://api.mangadex.org/manga/${encodeURIComponent(id)}/feed?translatedLanguage[]=en&order[chapter]=desc&limit=500&contentRating[]=safe&contentRating[]=suggestive`, {}, 10 * 60_000);
+            const chapters = (data?.data || [])
+                .map((c) => ({ id: c.id, chapter: c.attributes?.chapter || '', title: c.attributes?.title || '', pages: c.attributes?.pages || 0 }))
+                .filter((c) => c.chapter);
+            return json(res, 200, { chapters });
+        }
+
+        if (route === '/manga/pages') {
+            if (method !== 'GET') return json(res, 405, { error: 'Use GET for /api/manga/pages' }, { Allow: 'GET' });
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+            const chapterId = String(url.searchParams.get('chapterId') || '').slice(0, 40);
+            if (!chapterId) return json(res, 400, { error: 'Missing chapter id.' });
+            const data = await cachedJson(`https://api.mangadex.org/at-home/server/${encodeURIComponent(chapterId)}`, {}, 60 * 60_000);
+            if (!data?.baseUrl || !data?.chapter?.hash) return json(res, 404, { error: 'Chapter pages are not available right now.' });
+            const base = data.baseUrl;
+            const hash = data.chapter.hash;
+            return json(res, 200, {
+                pages: (data.chapter.data || []).map((file) => `${base}/data/${hash}/${file}`),
+                pagesSaver: (data.chapter.dataSaver || []).map((file) => `${base}/data-saver/${hash}/${file}`)
+            });
+        }
+
+        // ── Games (FreeToGame) ─────────────────────────────────────────
+        if (route === '/games') {
+            if (method !== 'GET') return json(res, 405, { error: 'Use GET for /api/games' }, { Allow: 'GET' });
+            const limiter = rateLimit('media', clientKey(req), RATE_LIMITS.media);
+            if (!limiter.ok) return json(res, 429, { error: `Too many requests — retry in ${limiter.retryAfter}s.` }, { 'Retry-After': String(limiter.retryAfter) });
+            const auth = await requireUser(req, res);
+            if (!auth) return;
+            const all = await cachedJson('https://www.freetogame.com/api/games', {}, 60 * 60_000);
+            if (!Array.isArray(all)) return json(res, 502, { error: 'The games catalog is temporarily unavailable.' });
+            const q = String(url.searchParams.get('q') || '').toLowerCase().trim().slice(0, 80);
+            const genre = String(url.searchParams.get('genre') || '').toLowerCase().slice(0, 40);
+            const platform = String(url.searchParams.get('platform') || '').toLowerCase().slice(0, 40);
+            let games = all;
+            if (q) games = games.filter((g) => String(g.title || '').toLowerCase().includes(q));
+            if (genre) games = games.filter((g) => String(g.genre || '').toLowerCase() === genre);
+            if (platform) games = games.filter((g) => String(g.platform || '').toLowerCase().includes(platform));
+            return json(res, 200, { games: games.slice(0, 36) });
         }
 
         // ── Watchlist ──────────────────────────────────────────────────

@@ -55,7 +55,9 @@ After deploying, test:
 | `GET|POST|DELETE /api/conversations` | Auth required |
 | `DELETE /api/conversations/:id` | Delete one exchange (404 if not yours) |
 | `GET /api/media/search` | Cached upstream (Jikan/TMDB), rate-limited |
-| `GET /api/media/detail` | Trailer URL + embed for a movie/TV/anime id; auth required |
+| `GET /api/manga/search` / `chapters` / `pages` | MangaDex reader: covers, chapter lists, page images; auth required |
+| `GET /api/games` | FreeToGame catalog with `?q=`, `?genre=`, `?platform=` filters |
+| `GET /api/media/detail` | Trailer + genres + **where-to-watch providers** (10 regions); auth required |
 | `GET|POST /api/watchlist`, `PATCH|DELETE /api/watchlist/:id` | Auth required |
 | `POST /api/chat` | Streaming (SSE) with keepalives, model fallback, multi-turn history; rate-limited |
 | `POST /api/generate-image` | Pollinations, optional `width`/`height` (256–1280); rate-limited |

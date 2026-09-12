@@ -28,7 +28,7 @@
 
         .fixed { position: fixed; } .absolute { position: absolute; } .relative { position: relative; }
         .inset-0 { top: 0; right: 0; bottom: 0; left: 0; } .top-0 { top: 0; }
-        .z-10 { z-index: 10; } .z-20 { z-index: 20; } .z-50 { z-index: 50; } .z-\[60\] { z-index: 60; } .z-\[70\] { z-index: 70; } .z-\[80\] { z-index: 80; }
+        .z-10 { z-index: 10; } .z-20 { z-index: 20; } .z-50 { z-index: 50; } .z-\[60\] { z-index: 60; } .z-\[70\] { z-index: 70; } .z-\[75\] { z-index: 75; } .z-\[80\] { z-index: 80; } .z-\[90\] { z-index: 90; }
         .flex { display: flex; } .inline-flex { display: inline-flex; } .inline-block { display: inline-block; } .grid { display: grid; } .hidden { display: none; }
         .flex-col { flex-direction: column; } .flex-wrap { flex-wrap: wrap; } .flex-1 { flex: 1 1 0%; } .shrink-0 { flex-shrink: 0; }
         .items-center { align-items: center; } .items-start { align-items: flex-start; }
@@ -49,7 +49,9 @@
         .overflow-hidden { overflow: hidden; } .overflow-x-auto { overflow-x: auto; } .overflow-y-auto { overflow-y: auto; }
         .min-w-0 { min-width: 0; } .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .whitespace-nowrap { white-space: nowrap; } .whitespace-pre-wrap { white-space: pre-wrap; }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .max-w-lg { max-width: 32rem; } .max-w-40 { max-width: 10rem; } .max-h-24 { max-height: 6rem; } .w-30 { width: 7.5rem; } .w-32 { width: 8rem; } .h-20 { height: 5rem; }
         .mx-auto { margin-left: auto; margin-right: auto; } .ml-2 { margin-left: 0.5rem; } .ml-auto { margin-left: auto; }
         .mt-1 { margin-top: 0.25rem; } .mt-2 { margin-top: 0.5rem; } .mt-3 { margin-top: 0.75rem; } .mt-4 { margin-top: 1rem; } .mt-5 { margin-top: 1.25rem; } .mt-6 { margin-top: 1.5rem; } .mt-8 { margin-top: 2rem; } .mt-12 { margin-top: 3rem; }
         .mb-2 { margin-bottom: 0.5rem; } .mb-6 { margin-bottom: 1.5rem; }
@@ -293,6 +295,8 @@
             <button id="new-chat-button" class="ml-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-neutral-300 transition hover:border-zinc-500" title="Start a new chat — the AI forgets previous messages (Ctrl+K)">＋ New chat</button>
             <button id="history-button" class="ml-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-neutral-300 transition hover:border-zinc-500" title="Show or hide past conversations">History</button>
             <button id="watch-button" class="ml-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-neutral-300 transition hover:border-zinc-500">Watch</button>
+            <button id="read-button" class="ml-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-neutral-300 transition hover:border-zinc-500">Read</button>
+            <button id="games-button" class="ml-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-neutral-300 transition hover:border-zinc-500">Games</button>
             <button id="account-button" class="ml-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-neutral-300 transition hover:border-zinc-500">Sign up</button>
         </div>
     </header>
@@ -418,6 +422,60 @@
         <div id="watcher-error" class="hidden mx-5 mb-2 rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-200"></div>
         <div id="media-results" class="grid content-hidden-until-paint min-h-[260px] flex-1 grid-cols-2 gap-3 overflow-y-auto px-5 pb-5 sm:grid-cols-3 lg:grid-cols-4"></div>
         <div id="watchlist-results" class="hidden min-h-[260px] flex-1 space-y-2 overflow-y-auto px-5 pb-5"></div>
+    </div>
+</div>
+
+<div id="watch-detail-modal" class="hidden fixed inset-0 z-[75] items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+    <div class="w-full max-w-lg overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 text-left shadow-2xl">
+        <div class="flex gap-4 p-5">
+            <img id="wd-poster" class="h-44 w-30 flex-none rounded-lg border border-neutral-800 bg-neutral-900 object-cover" alt="" />
+            <div class="min-w-0 flex-1">
+                <h3 id="wd-title" class="text-lg font-semibold text-white"></h3>
+                <p id="wd-meta" class="mt-1 text-xs text-neutral-500"></p>
+                <p id="wd-genres" class="mt-1 text-xs text-neutral-400"></p>
+                <p id="wd-overview" class="mt-2 max-h-24 overflow-y-auto text-xs leading-relaxed text-neutral-300"></p>
+            </div>
+        </div>
+        <div id="wd-providers" class="hidden border-t border-neutral-800 px-5 py-3">
+            <p class="text-xs font-semibold text-neutral-400">Where to watch</p>
+            <p id="wd-provider-names" class="mt-1 text-xs text-neutral-200"></p>
+        </div>
+        <div class="flex flex-wrap gap-2 border-t border-neutral-800 px-5 py-4">
+            <button id="wd-trailer" class="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-neutral-200">▶ Trailer</button>
+            <button id="wd-where" class="hidden rounded-lg border border-neutral-700 px-4 py-2 text-xs text-neutral-200 hover:border-neutral-500">Where to watch ↗</button>
+            <button id="wd-add" class="ml-auto rounded-lg border border-neutral-700 px-4 py-2 text-xs text-neutral-200 hover:border-neutral-500">+ Watchlist</button>
+        </div>
+    </div>
+</div>
+
+<div id="read-modal" class="hidden fixed inset-0 z-[70] items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+    <div class="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 text-left shadow-2xl">
+        <div class="flex items-center justify-between border-b border-neutral-800 px-5 py-4"><div><h2 class="text-lg font-semibold text-white">18vt Read</h2><p class="mt-1 text-xs text-neutral-500">Manga from MangaDex. Read chapters right here.</p></div><button id="close-read" class="text-xl text-neutral-500 hover:text-white">×</button></div>
+        <div class="flex gap-2 px-5 py-4"><input id="manga-search" class="min-w-0 flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-600" placeholder="Search manga..." /><button id="manga-search-button" class="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-neutral-200">Search</button></div>
+        <div id="read-error" class="hidden mx-5 mb-2 rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-200"></div>
+        <div id="manga-results" class="grid content-hidden-until-paint min-h-[260px] flex-1 grid-cols-2 gap-3 overflow-y-auto px-5 pb-5 sm:grid-cols-3 lg:grid-cols-4"></div>
+        <div id="manga-chapters" class="hidden min-h-[260px] flex-1 overflow-y-auto px-5 pb-5"></div>
+    </div>
+</div>
+
+<div id="reader-overlay" class="hidden fixed inset-0 z-[90] flex-col overflow-y-auto bg-black">
+    <div class="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-800 bg-black/95 px-5 py-3">
+        <p id="reader-title" class="min-w-0 flex-1 truncate text-sm font-semibold text-white"></p>
+        <div class="ml-3 flex items-center gap-2">
+            <button id="reader-mode" class="rounded-lg border border-neutral-700 px-3 py-1 text-xs text-neutral-200 hover:border-neutral-500" title="Toggle data-saver">HQ</button>
+            <select id="reader-chapter" class="max-w-40 rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-white"></select>
+            <button id="close-reader" class="text-xl text-neutral-500 hover:text-white">×</button>
+        </div>
+    </div>
+    <div id="reader-pages" class="mx-auto flex w-full max-w-2xl flex-col items-center gap-1 pb-10"></div>
+</div>
+
+<div id="games-modal" class="hidden fixed inset-0 z-[70] items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+    <div class="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 text-left shadow-2xl">
+        <div class="flex items-center justify-between border-b border-neutral-800 px-5 py-4"><div><h2 class="text-lg font-semibold text-white">18vt Games</h2><p class="mt-1 text-xs text-neutral-500">Free-to-play games you can launch instantly.</p></div><button id="close-games" class="text-xl text-neutral-500 hover:text-white">×</button></div>
+        <div class="flex flex-wrap items-center gap-2 px-5 py-3"><input id="games-search" class="min-w-0 flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-600" placeholder="Search games..." /><select id="games-genre" class="rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-2 text-xs text-white"><option value="">All genres</option></select><button id="games-search-button" class="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-neutral-200">Search</button></div>
+        <div id="games-error" class="hidden mx-5 mb-2 rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-200"></div>
+        <div id="games-results" class="grid content-hidden-until-paint min-h-[260px] flex-1 grid-cols-1 gap-3 overflow-y-auto px-5 pb-5 sm:grid-cols-2 lg:grid-cols-3"></div>
     </div>
 </div>
 
@@ -591,7 +649,7 @@
         const setWatcherError = (message = '') => { watcherError.textContent = message; watcherError.classList.toggle('hidden', !message); };
         const watchLink = (item) => item.mediaType === 'anime' ? `https://www.crunchyroll.com/search?q=${encodeURIComponent(item.title)}` : `https://www.justwatch.com/us/search?q=${encodeURIComponent(item.title)}`;
         const renderMediaResults = (results) => {
-            mediaResults.innerHTML = results.length ? results.map((item) => `<article class="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900"><div class="aspect-[2/3] bg-neutral-900">${item.posterUrl ? `<img src="${escapeHtml(item.posterUrl)}" alt="${escapeHtml(item.title)} poster" class="h-full w-full object-cover" loading="lazy" />` : '<div class="flex h-full items-center justify-center px-3 text-center text-xs text-neutral-600">No poster available</div>'}</div><div class="p-3"><h3 class="truncate text-sm font-semibold text-white" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</h3><div class="mt-1 flex items-center justify-between text-[10px] text-neutral-500"><span>${escapeHtml(item.year || 'Release date unknown')}</span><span>${item.score ? `★ ${Number(item.score).toFixed(1)}` : ''}</span></div><p class="mt-2 line-clamp-3 text-[11px] leading-5 text-neutral-400">${escapeHtml(item.overview || 'No synopsis available.')}</p><div class="mt-3 flex gap-2"><button class="trailer-play rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-300 hover:border-neutral-500 hover:text-white" data-item="${encodeURIComponent(JSON.stringify(item))}" title="Play trailer">▶ Trailer</button><button class="watchlist-add rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-300 hover:border-neutral-500 hover:text-white" data-item="${encodeURIComponent(JSON.stringify(item))}">＋</button></div></div></article>`).join('') : '<div class="col-span-full flex min-h-[220px] items-center justify-center text-sm text-neutral-500">No results found. Try another search.</div>';
+            mediaResults.innerHTML = results.length ? results.map((item) => `<article class="media-card cursor-pointer overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900 transition hover:border-neutral-600" data-item="${encodeURIComponent(JSON.stringify(item))}"><div class="aspect-[2/3] bg-neutral-900">${item.posterUrl ? `<img src="${escapeHtml(item.posterUrl)}" alt="${escapeHtml(item.title)} poster" class="h-full w-full object-cover" loading="lazy" />` : '<div class="flex h-full items-center justify-center px-3 text-center text-xs text-neutral-600">No poster available</div>'}</div><div class="p-3"><h3 class="truncate text-sm font-semibold text-white" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</h3><div class="mt-1 flex items-center justify-between text-[10px] text-neutral-500"><span>${escapeHtml(item.year || 'Release date unknown')}</span><span>${item.score ? `★ ${Number(item.score).toFixed(1)}` : ''}</span></div><p class="mt-2 line-clamp-3 text-[11px] leading-5 text-neutral-400">${escapeHtml(item.overview || 'No synopsis available.')}</p><div class="mt-3 flex gap-2"><button class="trailer-play rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-300 hover:border-neutral-500 hover:text-white" data-item="${encodeURIComponent(JSON.stringify(item))}" title="Play trailer">▶ Trailer</button><button class="watchlist-add rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-300 hover:border-neutral-500 hover:text-white" data-item="${encodeURIComponent(JSON.stringify(item))}">＋</button></div></div></article>`).join('') : '<div class="col-span-full flex min-h-[220px] items-center justify-center text-sm text-neutral-500">No results found. Try another search.</div>';
         };
         const renderWatchlist = (items) => { watchlistResults.innerHTML = items.length ? items.map((item) => `<div class="flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900 p-3"><div class="h-16 w-11 shrink-0 overflow-hidden rounded bg-neutral-800">${item.posterUrl ? `<img src="${escapeHtml(item.posterUrl)}" alt="" class="h-full w-full object-cover" />` : ''}</div><div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold text-white">${escapeHtml(item.title)}</div><div class="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">${escapeHtml(item.mediaType)} · <button class="watch-status uppercase rounded px-1 py-0.5 transition hover:text-white ${item.status === 'completed' ? 'text-green-300' : item.status === 'watching' ? 'text-sky-300' : item.status === 'dropped' ? 'text-red-300' : 'text-neutral-400'}" data-id="${item.id}" data-status="${escapeHtml(item.status)}" title="Click to change status">${escapeHtml(item.status)}</button></div><div class="mt-2 flex items-center gap-2"><input class="watch-progress w-full accent-sky-500" type="range" min="0" max="100" value="${item.progress}" data-id="${item.id}" /><span class="w-8 text-right text-[10px] text-neutral-500">${item.progress}%</span></div><a href="${watchLink(item)}" target="_blank" rel="noopener noreferrer" class="mt-1 inline-block text-[10px] text-sky-400 hover:text-sky-300">Find where to watch ↗</a></div><button class="watchlist-remove px-2 text-lg text-neutral-600 hover:text-red-300" data-id="${item.id}" title="Remove">×</button></div>`).join('') : '<div class="flex min-h-[220px] items-center justify-center text-sm text-neutral-500">Your watchlist is empty.</div>'; };
         // Live model picker from /api/models (curated + free models OpenRouter serves).
@@ -607,6 +665,149 @@
             } catch { /* keep the static list */ }
         };
         loadModels();
+
+        // ── Watch: detail modal ─────────────────────────────────────
+        const wdModal = document.getElementById('watch-detail-modal');
+        const wdPoster = document.getElementById('wd-poster');
+        const wdTitle = document.getElementById('wd-title');
+        const wdMeta = document.getElementById('wd-meta');
+        const wdGenres = document.getElementById('wd-genres');
+        const wdOverview = document.getElementById('wd-overview');
+        const wdProviders = document.getElementById('wd-providers');
+        const wdProviderNames = document.getElementById('wd-provider-names');
+        const wdTrailer = document.getElementById('wd-trailer');
+        const wdWhere = document.getElementById('wd-where');
+        const wdAdd = document.getElementById('wd-add');
+        let wdItem = null;
+        const closeWd = () => wdModal.classList.add('hidden');
+        const openWatchDetail = async (item) => {
+            wdItem = item;
+            wdTitle.textContent = item.title;
+            wdMeta.textContent = `${item.mediaType === 'tv' ? 'TV show' : item.mediaType === 'anime' ? 'Anime' : 'Movie'}${item.year ? ' · ' + item.year : ''}${item.score ? ' · ★ ' + Number(item.score).toFixed(1) : ''}`;
+            wdGenres.textContent = '';
+            wdOverview.textContent = item.overview || 'No synopsis available.';
+            wdPoster.src = item.posterUrl || 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+            wdProviders.classList.add('hidden');
+            wdProviderNames.textContent = '';
+            wdWhere.classList.add('hidden');
+            wdAdd.disabled = false; wdAdd.textContent = '+ Watchlist';
+            wdModal.classList.remove('hidden'); wdModal.classList.add('flex');
+            try {
+                const detail = await api(`/api/media/detail?type=${encodeURIComponent(item.mediaType)}&id=${encodeURIComponent(item.externalId)}`);
+                wdGenres.textContent = (detail.genres || []).join(' · ');
+                if (detail.runtime) wdMeta.textContent += ` · ${detail.runtime} min`;
+                const providerNames = Object.values(detail.providers || {})[0]?.names || [];
+                if (providerNames.length) { wdProviderNames.textContent = providerNames.join(', '); wdProviders.classList.remove('hidden'); }
+                if (detail.justWatchUrl) { wdWhere.classList.remove('hidden'); wdWhere.dataset.url = detail.justWatchUrl; }
+            } catch { /* detail is optional — card data already shows */ }
+        };
+        wdTrailer.addEventListener('click', () => { if (wdItem) openTrailer(wdItem); });
+        wdWhere.addEventListener('click', () => { const u = wdWhere.dataset.url; if (u) window.open(u, '_blank', 'noopener'); });
+        wdAdd.addEventListener('click', async () => { if (!wdItem) return; try { await api('/api/watchlist', { method: 'POST', body: JSON.stringify(wdItem) }); wdAdd.textContent = '✓ Added'; wdAdd.disabled = true; toast('Added to watchlist.', 'success'); } catch (error) { toast(error.message, 'error'); } });
+        wdModal.addEventListener('click', (event) => { if (event.target === wdModal) closeWd(); });
+
+        // ── Read (MangaDex) ─────────────────────────────────────────
+        const readButton = document.getElementById('read-button');
+        const readModal = document.getElementById('read-modal');
+        const closeRead = document.getElementById('close-read');
+        const mangaSearch = document.getElementById('manga-search');
+        const mangaSearchButton = document.getElementById('manga-search-button');
+        const readError = document.getElementById('read-error');
+        const mangaResults = document.getElementById('manga-results');
+        const mangaChapters = document.getElementById('manga-chapters');
+        const readerOverlay = document.getElementById('reader-overlay');
+        const readerTitle = document.getElementById('reader-title');
+        const readerPages = document.getElementById('reader-pages');
+        const readerChapter = document.getElementById('reader-chapter');
+        const readerMode = document.getElementById('reader-mode');
+        const closeReaderBtn = document.getElementById('close-reader');
+        let currentManga = null;
+        let currentChapters = [];
+        let saverMode = false;
+        const setReadError = (message = '') => { readError.textContent = message; readError.classList.toggle('hidden', !message); };
+        const openRead = () => { if (!currentUser) { setAuthMode('signup'); authModal.classList.remove('hidden'); authModal.classList.add('flex'); toast('Sign up or sign in to use Read.', 'info'); return; } readModal.classList.remove('hidden'); readModal.classList.add('flex'); if (!mangaResults.dataset.loaded) loadManga(); };
+        const loadManga = async () => {
+            setReadError('');
+            mangaResults.innerHTML = '<div class="col-span-full flex min-h-[220px] items-center justify-center text-sm text-neutral-500">Loading...</div>';
+            try {
+                const q = mangaSearch.value.trim() || 'popular';
+                const data = await api(`/api/manga/search?q=${encodeURIComponent(q)}`);
+                const results = data.results || [];
+                mangaResults.innerHTML = results.length ? results.map((m) => `<article class="manga-card cursor-pointer overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900 transition hover:border-neutral-600" data-manga="${encodeURIComponent(JSON.stringify(m))}"><div class="aspect-[2/3] bg-neutral-900">${m.coverUrl ? `<img src="${escapeHtml(m.coverUrl)}" alt="" class="h-full w-full object-cover" loading="lazy" />` : '<div class="flex h-full items-center justify-center px-3 text-center text-xs text-neutral-600">No cover</div>'}</div><div class="p-3"><h3 class="truncate text-sm font-semibold text-white" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</h3><p class="mt-1 text-[10px] text-neutral-500">${escapeHtml(m.year || '')}${m.status ? ' · ' + escapeHtml(m.status) : ''}</p><p class="mt-1 truncate text-[10px] text-neutral-400">${escapeHtml((m.tags || []).join(' · '))}</p></div></article>`).join('') : '<div class="col-span-full flex min-h-[220px] items-center justify-center text-sm text-neutral-500">No manga found. Try another search.</div>';
+                mangaResults.dataset.loaded = '1';
+            } catch (error) { setReadError(error.message); mangaResults.innerHTML = ''; }
+        };
+        const openChapters = async (manga) => {
+            currentManga = manga;
+            setReadError('');
+            mangaResults.classList.add('hidden');
+            mangaChapters.classList.remove('hidden');
+            mangaChapters.innerHTML = '<div class="flex min-h-[220px] items-center justify-center text-sm text-neutral-500">Loading chapters...</div>';
+            try {
+                const data = await api(`/api/manga/chapters?id=${encodeURIComponent(manga.id)}`);
+                currentChapters = data.chapters || [];
+                mangaChapters.innerHTML = currentChapters.length ? currentChapters.map((c) => `<button class="chapter-btn flex w-full items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-left text-sm text-neutral-200 transition hover:border-neutral-600" data-chapter="${escapeHtml(c.id)}" data-label="${escapeHtml(`Ch. ${c.chapter}${c.title ? ' — ' + c.title : ''}`)}"><span class="w-20 flex-none font-mono text-xs text-sky-300">Ch. ${escapeHtml(c.chapter)}</span><span class="min-w-0 flex-1 truncate">${escapeHtml(c.title || '')}</span><span class="flex-none text-[10px] text-neutral-500">${c.pages || '?'} pages</span></button>`).join('') : '<div class="flex min-h-[220px] items-center justify-center text-sm text-neutral-500">No English chapters available.</div>';
+            } catch (error) { setReadError(error.message); mangaChapters.innerHTML = ''; }
+        };
+        const openReader = async (chapterId, label) => {
+            setReadError('');
+            readerOverlay.classList.remove('hidden'); readerOverlay.classList.add('flex');
+            readerTitle.textContent = `${currentManga ? currentManga.title : ''} — ${label}`;
+            readerPages.innerHTML = '<div class="flex min-h-[300px] w-full items-center justify-center text-sm text-neutral-500">Loading pages...</div>';
+            readerChapter.innerHTML = currentChapters.map((c) => `<option value="${escapeHtml(c.id)}" data-label="${escapeHtml(`Ch. ${c.chapter}${c.title ? ' — ' + c.title : ''}`)}" ${c.id === chapterId ? 'selected' : ''}>Ch. ${escapeHtml(c.chapter)}</option>`).join('');
+            try {
+                const data = await api(`/api/manga/pages?chapterId=${encodeURIComponent(chapterId)}`);
+                const pages = saverMode ? (data.pagesSaver || []) : (data.pages || []);
+                readerPages.innerHTML = pages.length ? pages.map((u) => `<img src="${escapeHtml(u)}" alt="" class="w-full" loading="lazy" />`).join('') : '<div class="flex min-h-[300px] w-full items-center justify-center text-sm text-neutral-500">No pages returned. Try HQ mode.</div>';
+            } catch (error) { readerPages.innerHTML = `<div class="flex min-h-[300px] w-full items-center justify-center px-6 text-center text-sm text-red-300">${escapeHtml(error.message)}</div>`; }
+        };
+        const closeReader = () => { readerOverlay.classList.add('hidden'); readerOverlay.classList.remove('flex'); readerPages.innerHTML = ''; };
+        readButton.addEventListener('click', openRead);
+        closeRead.addEventListener('click', () => { readModal.classList.add('hidden'); readModal.classList.remove('flex'); mangaChapters.classList.add('hidden'); mangaResults.classList.remove('hidden'); });
+        readModal.addEventListener('click', (event) => { if (event.target === readModal) { readModal.classList.add('hidden'); readModal.classList.remove('flex'); mangaChapters.classList.add('hidden'); mangaResults.classList.remove('hidden'); } });
+        mangaSearchButton.addEventListener('click', loadManga);
+        mangaSearch.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadManga(); });
+        mangaResults.addEventListener('click', (event) => { const card = event.target.closest('.manga-card'); if (!card) return; try { openChapters(JSON.parse(decodeURIComponent(card.dataset.manga))); } catch (error) { setReadError('Could not open that manga.'); } });
+        mangaChapters.addEventListener('click', (event) => { const btn = event.target.closest('.chapter-btn'); if (!btn) return; openReader(btn.dataset.chapter, btn.dataset.label); });
+        readerChapter.addEventListener('change', () => { const opt = readerChapter.selectedOptions[0]; if (opt) openReader(opt.value, opt.dataset.label); });
+        readerMode.addEventListener('click', () => { saverMode = !saverMode; readerMode.textContent = saverMode ? 'Data-saver' : 'HQ'; const opt = readerChapter.selectedOptions[0]; if (opt) openReader(opt.value, opt.dataset.label); });
+        closeReaderBtn.addEventListener('click', closeReader);
+        document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !readerOverlay.classList.contains('hidden')) closeReader(); });
+
+        // ── Games (FreeToGame) ──────────────────────────────────────
+        const gamesButton = document.getElementById('games-button');
+        const gamesModal = document.getElementById('games-modal');
+        const closeGames = document.getElementById('close-games');
+        const gamesSearch = document.getElementById('games-search');
+        const gamesSearchButton = document.getElementById('games-search-button');
+        const gamesGenre = document.getElementById('games-genre');
+        const gamesError = document.getElementById('games-error');
+        const gamesResults = document.getElementById('games-results');
+        const GENRES = ['mmo', 'mmorpg', 'shooter', 'strategy', 'action-rpg', 'battle-royale', 'racing', 'sports', 'fantasy', 'sci-fi', 'card', 'fighting', 'horror', 'sandbox', 'anime', 'puzzle', 'platformer'];
+        gamesGenre.innerHTML = '<option value="">All genres</option>' + GENRES.map((g) => `<option value="${g}">${g.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>`).join('');
+        const setGamesError = (message = '') => { gamesError.textContent = message; gamesError.classList.toggle('hidden', !message); };
+        const openGames = () => { if (!currentUser) { setAuthMode('signup'); authModal.classList.remove('hidden'); authModal.classList.add('flex'); toast('Sign up or sign in to use Games.', 'info'); return; } gamesModal.classList.remove('hidden'); gamesModal.classList.add('flex'); if (!gamesResults.dataset.loaded) loadGames(); };
+        const loadGames = async () => {
+            setGamesError('');
+            gamesResults.innerHTML = '<div class="col-span-full flex min-h-[220px] items-center justify-center text-sm text-neutral-500">Loading games...</div>';
+            try {
+                const params = new URLSearchParams();
+                const q = gamesSearch.value.trim();
+                if (q) params.set('q', q);
+                if (gamesGenre.value) params.set('genre', gamesGenre.value);
+                const data = await api(`/api/games?${params}`);
+                const games = data.games || [];
+                gamesResults.innerHTML = games.length ? games.map((g) => `<article class="flex gap-3 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900 p-3"><img src="${escapeHtml(g.thumbnail)}" alt="" class="h-20 w-32 flex-none rounded-lg object-cover" loading="lazy" /><div class="min-w-0 flex-1"><h3 class="truncate text-sm font-semibold text-white" title="${escapeHtml(g.title)}">${escapeHtml(g.title)}</h3><p class="mt-0.5 text-[10px] uppercase tracking-wide text-neutral-500">${escapeHtml(g.genre)} · ${escapeHtml(g.platform)}</p><p class="mt-1 line-clamp-2 text-[11px] leading-4 text-neutral-400">${escapeHtml(g.short_description)}</p><div class="mt-2 flex items-center gap-2"><button class="game-play rounded-lg bg-white px-3 py-1.5 text-[11px] font-semibold text-black hover:bg-neutral-200" data-url="${escapeHtml(g.game_url)}">▶ Play free</button><a href="${escapeHtml(g.freetogame_profile_url)}" target="_blank" rel="noopener noreferrer" class="text-[10px] text-sky-400 hover:text-sky-300">Details ↗</a></div></div></article>`).join('') : '<div class="col-span-full flex min-h-[220px] items-center justify-center text-sm text-neutral-500">No games match. Try another search.</div>';
+                gamesResults.dataset.loaded = '1';
+            } catch (error) { setGamesError(error.message); gamesResults.innerHTML = ''; }
+        };
+        gamesButton.addEventListener('click', openGames);
+        closeGames.addEventListener('click', () => gamesModal.classList.add('hidden'));
+        gamesModal.addEventListener('click', (event) => { if (event.target === gamesModal) gamesModal.classList.add('hidden'); });
+        gamesSearchButton.addEventListener('click', loadGames);
+        gamesSearch.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadGames(); });
+        gamesGenre.addEventListener('change', loadGames);
+        gamesResults.addEventListener('click', (event) => { const btn = event.target.closest('.game-play'); if (!btn) return; window.open(btn.dataset.url, '_blank', 'noopener'); });
 
         const renderConversations = () => {
             // History button off → show only the current chat session; on → everything.
@@ -928,8 +1129,9 @@
             const addBtn = event.target.closest('.watchlist-add');
             const trailerBtn = event.target.closest('.trailer-play');
             if (trailerBtn) { try { await openTrailer(JSON.parse(decodeURIComponent(trailerBtn.dataset.item))); } catch (error) { setWatcherError(error.message); } return; }
-            if (!addBtn) return;
-            try { const item = JSON.parse(decodeURIComponent(addBtn.dataset.item)); await api('/api/watchlist', { method: 'POST', body: JSON.stringify(item) }); addBtn.textContent = '✓'; addBtn.disabled = true; toast('Added to watchlist.', 'success'); } catch (error) { setWatcherError(error.message); }
+            if (addBtn) { try { const item = JSON.parse(decodeURIComponent(addBtn.dataset.item)); await api('/api/watchlist', { method: 'POST', body: JSON.stringify(item) }); addBtn.textContent = '✓'; addBtn.disabled = true; toast('Added to watchlist.', 'success'); } catch (error) { setWatcherError(error.message); } return; }
+            const card = event.target.closest('.media-card');
+            if (card) { try { await openWatchDetail(JSON.parse(decodeURIComponent(card.dataset.item))); } catch (error) { setWatcherError(error.message); } }
         });
         watchlistResults.addEventListener('input', async (event) => { const slider = event.target.closest('.watch-progress'); if (!slider) return; try { await api(`/api/watchlist/${encodeURIComponent(slider.dataset.id)}`, { method: 'PATCH', body: JSON.stringify({ progress: Number(slider.value) }) }); slider.nextElementSibling.textContent = `${slider.value}%`; } catch (error) { setWatcherError(error.message); } });
         watchlistResults.addEventListener('click', async (event) => {
